@@ -1,12 +1,21 @@
-import { formatDocumentDate, formatFileSize } from "@/lib/documents";
-import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
+import { uploadDocument } from "@/app/(app)/documents/actions";
 import { PageHeader } from "@/components/app/page-header";
+import { UploadSubmitButton } from "@/components/documents/upload-submit-button";
+import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { formatDocumentDate, formatFileSize } from "@/lib/documents";
+import { createClient } from "@/lib/supabase/server";
 
-export default async function DocumentsPage() {
-  const supabase = await createClient();
+type DocumentsPageProps = {
+  searchParams: Promise<{
+    error?: string;
+    message?: string;
+  }>;
+};
+
+export default async function DocumentsPage({ searchParams }: DocumentsPageProps) {
+  const [{ error: pageError, message }, supabase] = await Promise.all([searchParams, createClient()]);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -23,7 +32,7 @@ export default async function DocumentsPage() {
       <PageHeader
         badge="Documents"
         title="Organize your source material"
-        description="Your document library is now backed by Supabase and scoped to the signed-in account. Upload handling can layer in next."
+        description="Your document library is backed by Supabase Storage and metadata is scoped to the signed-in account."
         actions={
           <>
             <Button href="/dashboard" variant="secondary">
@@ -35,27 +44,84 @@ export default async function DocumentsPage() {
       />
 
       <div className="grid gap-5 xl:grid-cols-[0.75fr_1.25fr]">
-        <Card className="space-y-5">
-          <div className="space-y-2">
-            <CardTitle>Library overview</CardTitle>
-            <CardDescription>
-              The first document layer stores metadata in Supabase and keeps each user’s library
-              isolated with row-level security.
-            </CardDescription>
-          </div>
+        <div className="space-y-5">
+          <Card className="space-y-5">
+            <div className="space-y-2">
+              <CardTitle>Library overview</CardTitle>
+              <CardDescription>
+                The first document layer stores PDFs in Supabase Storage and keeps each user&apos;s
+                metadata isolated with row-level security.
+              </CardDescription>
+            </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-              <p className="text-sm text-slate-400">Signed-in account</p>
-              <p className="mt-2 break-all text-base font-medium text-white">{user?.email}</p>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                <p className="text-sm text-slate-400">Signed-in account</p>
+                <p className="mt-2 break-all text-base font-medium text-white">{user?.email}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                <p className="text-sm text-slate-400">Documents in library</p>
+                <p className="mt-2 text-3xl font-semibold text-white">{documentCount}</p>
+                <p className="mt-2 text-sm text-slate-400">Stored per user in Supabase.</p>
+              </div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-              <p className="text-sm text-slate-400">Documents in library</p>
-              <p className="mt-2 text-3xl font-semibold text-white">{documentCount}</p>
-              <p className="mt-2 text-sm text-slate-400">Ordered by most recently created.</p>
+          </Card>
+
+          <Card className="space-y-5">
+            <div className="space-y-2">
+              <CardTitle>Upload a PDF</CardTitle>
+              <CardDescription>
+                Uploads are restricted to the current signed-in user. A matching row is created in
+                the `documents` table after the file lands in Storage.
+              </CardDescription>
             </div>
-          </div>
-        </Card>
+
+            {pageError ? (
+              <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+                {pageError}
+              </div>
+            ) : null}
+
+            {message ? (
+              <div className="rounded-2xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+                {message}
+              </div>
+            ) : null}
+
+            <form action={uploadDocument} className="space-y-5">
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-slate-200">Title</span>
+                <input
+                  name="title"
+                  type="text"
+                  placeholder="Biology Chapter 3 Notes"
+                  className="h-12 w-full rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/40"
+                />
+                <p className="text-xs text-slate-500">
+                  Optional. If left blank, the title will be generated from the file name.
+                </p>
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-slate-200">PDF file</span>
+                <input
+                  name="file"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  required
+                  className="block w-full rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-4 text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-cyan-300 file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-950 hover:file:bg-cyan-200"
+                />
+                <p className="text-xs text-slate-500">
+                  PDF only. The default bucket setup below uses a 10 MB limit.
+                </p>
+              </label>
+
+              <div className="flex justify-end">
+                <UploadSubmitButton />
+              </div>
+            </form>
+          </Card>
+        </div>
 
         {error ? (
           <Card className="space-y-3">
@@ -64,14 +130,14 @@ export default async function DocumentsPage() {
               Supabase returned an error while loading documents: {error.message}
             </CardDescription>
             <CardDescription>
-              Run the `public.documents` SQL setup first, then reload this page.
+              Run both the database SQL and the Storage bucket SQL setup, then reload this page.
             </CardDescription>
           </Card>
         ) : documentCount === 0 ? (
           <EmptyState
             eyebrow="No documents yet"
             title="Your document library is ready for the first upload."
-            description="Document metadata is now wired to Supabase. Once uploads are added, new files will appear here for the signed-in user."
+            description="Upload a PDF from the panel on the left and it will be stored in Supabase Storage with a matching metadata row for this user."
             actionLabel="Back to dashboard"
             actionHref="/dashboard"
             secondaryActionLabel="Open chat"
@@ -89,7 +155,7 @@ export default async function DocumentsPage() {
               <div>
                 <CardTitle>Documents</CardTitle>
                 <CardDescription>
-                  Metadata stored in Supabase for the current authenticated user.
+                  PDFs uploaded to Supabase Storage for the current authenticated user.
                 </CardDescription>
               </div>
               <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
