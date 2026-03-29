@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Logo } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +14,11 @@ const appNavItems = [
   { href: "/quizzes", label: "Quizzes", icon: "05" },
 ];
 
-export function Sidebar() {
+type SidebarProps = {
+  userEmail?: string;
+};
+
+export function Sidebar({ userEmail }: SidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -59,10 +64,12 @@ export function Sidebar() {
       </div>
 
       <div className="mt-auto rounded-3xl border border-cyan-300/15 bg-cyan-300/[0.08] p-5">
-        <p className="text-sm font-semibold text-white">Ready for backend wiring</p>
+        <p className="text-sm font-semibold text-white">{userEmail ?? "Signed in"}</p>
         <p className="mt-2 text-sm leading-6 text-slate-300">
-          This shell is intentionally UI-only so we can layer auth, uploads, and AI flows in next.
+          Auth is live now. The rest of the dashboard remains ready for documents, storage, and AI
+          workflows next.
         </p>
+        <SignOutButton variant="ghost" className="mt-4 w-full justify-center border border-white/10" />
       </div>
     </aside>
   );

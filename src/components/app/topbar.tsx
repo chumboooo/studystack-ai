@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { cn } from "@/lib/utils";
 
 const mobileNavItems = [
@@ -13,7 +13,11 @@ const mobileNavItems = [
   { href: "/quizzes", label: "Quizzes" },
 ];
 
-export function Topbar() {
+type TopbarProps = {
+  userEmail?: string;
+};
+
+export function Topbar({ userEmail }: TopbarProps) {
   const pathname = usePathname();
 
   return (
@@ -23,11 +27,9 @@ export function Topbar() {
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">
             StudyStack AI
           </p>
-          <p className="text-sm text-slate-300">Dashboard workspace</p>
+          <p className="text-sm text-slate-300">{userEmail ?? "Dashboard workspace"}</p>
         </div>
-        <Button href="/sign-in" variant="secondary" size="md">
-          Account
-        </Button>
+        <SignOutButton variant="secondary" size="md" />
       </div>
       <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
         {mobileNavItems.map((item) => (
