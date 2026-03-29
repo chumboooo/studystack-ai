@@ -32,3 +32,7 @@ export function formatDocumentDate(value: string) {
 export function buildDocumentFileUrl(documentId: string, mode: "view" | "download") {
   return `/documents/${documentId}/file?mode=${mode}`;
 }
+
+export function buildDocumentChunkUrl(documentId: string, chunkIndex: number) {
+  return `/documents/${documentId}?chunk=${chunkIndex}#chunk-${chunkIndex}`;
+}

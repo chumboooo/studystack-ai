@@ -3,6 +3,108 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      chat_sessions: {
+        Row: {
+          created_at: string;
+          id: string;
+          title: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          title: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          title?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      chat_turn_sources: {
+        Row: {
+          chunk_id: string | null;
+          chunk_index: number;
+          content_excerpt: string;
+          created_at: string;
+          document_id: string | null;
+          document_title: string;
+          id: string;
+          rank: number | null;
+          source_label: string;
+          turn_id: string;
+          user_id: string;
+        };
+        Insert: {
+          chunk_id?: string | null;
+          chunk_index: number;
+          content_excerpt?: string;
+          created_at?: string;
+          document_id?: string | null;
+          document_title: string;
+          id?: string;
+          rank?: number | null;
+          source_label: string;
+          turn_id: string;
+          user_id: string;
+        };
+        Update: {
+          chunk_id?: string | null;
+          chunk_index?: number;
+          content_excerpt?: string;
+          created_at?: string;
+          document_id?: string | null;
+          document_title?: string;
+          id?: string;
+          rank?: number | null;
+          source_label?: string;
+          turn_id?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      chat_turns: {
+        Row: {
+          answer: string;
+          created_at: string;
+          error_message: string | null;
+          id: string;
+          question: string;
+          session_id: string;
+          status: "completed" | "no_sources" | "failed";
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          answer?: string;
+          created_at?: string;
+          error_message?: string | null;
+          id?: string;
+          question: string;
+          session_id: string;
+          status?: "completed" | "no_sources" | "failed";
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          answer?: string;
+          created_at?: string;
+          error_message?: string | null;
+          id?: string;
+          question?: string;
+          session_id?: string;
+          status?: "completed" | "no_sources" | "failed";
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       document_chunks: {
         Row: {
           character_count: number;

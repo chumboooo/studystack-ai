@@ -21,6 +21,7 @@ type DocumentDetailPageProps = {
     id: string;
   }>;
   searchParams: Promise<{
+    chunk?: string;
     error?: string;
     message?: string;
   }>;
@@ -40,11 +41,12 @@ export default async function DocumentDetailPage({
   params,
   searchParams,
 }: DocumentDetailPageProps) {
-  const [{ id }, { error: pageError, message }, supabase] = await Promise.all([
+  const [{ id }, { chunk, error: pageError, message }, supabase] = await Promise.all([
     params,
     searchParams,
     createClient(),
   ]);
+  const selectedChunkIndex = Number.isFinite(Number(chunk)) ? Number(chunk) : null;
 
   const { data: document, error } = await supabase
     .from("documents")
@@ -135,6 +137,11 @@ export default async function DocumentDetailPage({
       {pageError ? <AlertBanner tone="error">{pageError}</AlertBanner> : null}
 
       {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
+      {selectedChunkIndex !== null ? (
+        <AlertBanner tone="info">
+          Jumped to chunk {selectedChunkIndex + 1}. The selected chunk is highlighted below.
+        </AlertBanner>
+      ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         <div className="space-y-5">
@@ -290,7 +297,12 @@ export default async function DocumentDetailPage({
               {chunks.map((chunk) => (
                 <div
                   key={chunk.id}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-5"
+                  id={`chunk-${chunk.chunk_index}`}
+                  className={`scroll-mt-28 rounded-2xl border p-5 transition-colors ${
+                    selectedChunkIndex === chunk.chunk_index
+                      ? "border-cyan-300/30 bg-cyan-300/10 shadow-[0_0_0_1px_rgba(103,232,249,0.08)]"
+                      : "border-white/10 bg-white/5"
+                  }`}
                 >
                   <div className="space-y-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
