@@ -162,8 +162,12 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
                       </p>
                     </div>
 
-                    <Button href="/documents" variant="secondary" className="shrink-0">
-                      View library
+                    <Button
+                      href={`/documents/${result.document_id}`}
+                      variant="secondary"
+                      className="shrink-0"
+                    >
+                      View document
                     </Button>
                   </div>
                 </div>

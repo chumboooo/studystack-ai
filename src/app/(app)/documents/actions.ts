@@ -28,6 +28,75 @@ function formatActionError(error: unknown) {
   return String(error);
 }
 
+async function deleteStoredDocumentFile({
+  documentId,
+  redirectTo,
+}: {
+  documentId: string;
+  redirectTo: string;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/sign-in");
+  }
+
+  const { data: document, error: fetchError } = await supabase
+    .from("documents")
+    .select("id, title, file_path")
+    .eq("id", documentId)
+    .maybeSingle();
+
+  if (fetchError) {
+    redirect(
+      buildRedirect({
+        error: fetchError.message,
+      }),
+    );
+  }
+
+  if (!document) {
+    redirect(
+      buildRedirect({
+        error: "That document could not be found or does not belong to this account.",
+      }),
+    );
+  }
+
+  const bucket = process.env.SUPABASE_DOCUMENTS_BUCKET || DEFAULT_BUCKET;
+  const { error: storageDeleteError } = await supabase.storage.from(bucket).remove([document.file_path]);
+
+  if (storageDeleteError) {
+    redirect(
+      buildRedirect({
+        error: storageDeleteError.message,
+      }),
+    );
+  }
+
+  const { error: deleteError } = await supabase.from("documents").delete().eq("id", document.id);
+
+  if (deleteError) {
+    redirect(
+      buildRedirect({
+        error: deleteError.message,
+      }),
+    );
+  }
+
+  revalidatePath("/documents");
+  revalidatePath(`/documents/${document.id}`);
+
+  redirect(
+    `${redirectTo}?${new URLSearchParams({
+      message: `"${document.title}" was deleted successfully.`,
+    }).toString()}`,
+  );
+}
+
 export async function uploadDocument(formData: FormData) {
   const supabase = await createClient();
   const {
@@ -196,4 +265,39 @@ export async function uploadDocument(formData: FormData) {
       message: successMessage,
     }),
   );
+}
+
+export async function deleteDocumentFromList(formData: FormData) {
+  const documentId = String(formData.get("documentId") ?? "").trim();
+
+  if (!documentId) {
+    redirect(
+      buildRedirect({
+        error: "A document id is required to delete a document.",
+      }),
+    );
+  }
+
+  await deleteStoredDocumentFile({
+    documentId,
+    redirectTo: "/documents",
+  });
+}
+
+export async function deleteDocumentFromDetail(formData: FormData) {
+  const documentId = String(formData.get("documentId") ?? "").trim();
+  const redirectTo = String(formData.get("redirectTo") ?? "/documents").trim() || "/documents";
+
+  if (!documentId) {
+    redirect(
+      buildRedirect({
+        error: "A document id is required to delete a document.",
+      }),
+    );
+  }
+
+  await deleteStoredDocumentFile({
+    documentId,
+    redirectTo,
+  });
 }

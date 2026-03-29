@@ -1,4 +1,5 @@
-import { uploadDocument } from "@/app/(app)/documents/actions";
+import { deleteDocumentFromList, uploadDocument } from "@/app/(app)/documents/actions";
+import { DeleteDocumentForm } from "@/components/documents/delete-document-button";
 import { PageHeader } from "@/components/app/page-header";
 import { UploadSubmitButton } from "@/components/documents/upload-submit-button";
 import { Button } from "@/components/ui/button";
@@ -217,11 +218,30 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                           </span>
                         ) : null}
                       </div>
+                      <p className="text-sm leading-7 text-slate-300">
+                        Open the detail view to inspect extracted text and stored chunks for this
+                        document.
+                      </p>
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
-                      <p className="font-medium text-slate-100">Storage path</p>
-                      <p className="mt-1 break-all text-slate-400">{document.file_path}</p>
+                    <div className="flex shrink-0 flex-col gap-3 lg:items-end">
+                      <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
+                        <p className="font-medium text-slate-100">Storage path</p>
+                        <p className="mt-1 max-w-xs break-all text-slate-400">
+                          {document.file_path}
+                        </p>
+                      </div>
+                      <Button href={`/documents/${document.id}`} variant="secondary">
+                        View details
+                      </Button>
+                      <DeleteDocumentForm
+                        action={deleteDocumentFromList}
+                        documentId={document.id}
+                        confirmMessage={`Delete "${document.title}" and all extracted data? This cannot be undone.`}
+                        label="Delete document"
+                        pendingLabel="Deleting..."
+                        className="justify-center border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
+                      />
                     </div>
                   </div>
                 </div>
