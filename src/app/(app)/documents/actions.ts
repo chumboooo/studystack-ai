@@ -12,6 +12,11 @@ function buildRedirect(params: Record<string, string>) {
   return `/documents?${new URLSearchParams(params).toString()}`;
 }
 
+function buildScopedRedirect(path: string, params: Record<string, string>) {
+  const query = new URLSearchParams(params).toString();
+  return query ? `${path}?${query}` : path;
+}
+
 function sanitizeFileName(fileName: string) {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-");
 }
@@ -26,6 +31,117 @@ function formatActionError(error: unknown) {
   }
 
   return String(error);
+}
+
+async function runDocumentExtraction({
+  supabase,
+  userId,
+  documentId,
+  sourceBuffer,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  documentId: string;
+  sourceBuffer: ArrayBuffer;
+}) {
+  const { error: contentUpsertError } = await supabase
+    .from("document_contents")
+    .upsert({
+      document_id: documentId,
+      user_id: userId,
+      extraction_status: "pending",
+      chunk_count: 0,
+      raw_text: "",
+      page_count: null,
+      extracted_at: null,
+      error_message: null,
+    });
+
+  if (contentUpsertError) {
+    throw contentUpsertError;
+  }
+
+  const { error: deleteChunksError } = await supabase
+    .from("document_chunks")
+    .delete()
+    .eq("document_id", documentId)
+    .eq("user_id", userId);
+
+  if (deleteChunksError) {
+    throw deleteChunksError;
+  }
+
+  try {
+    const extraction = await extractPdfText(sourceBuffer);
+    const chunks = chunkExtractedText(extraction.rawText);
+
+    if (chunks.length > 0) {
+      const { error: chunkInsertError } = await supabase.from("document_chunks").insert(
+        chunks.map((chunk) => ({
+          document_id: documentId,
+          user_id: userId,
+          chunk_index: chunk.chunkIndex,
+          content: chunk.content,
+          character_count: chunk.characterCount,
+          metadata: {
+            strategy: "paragraph-balanced-v1",
+          },
+        })),
+      );
+
+      if (chunkInsertError) {
+        throw chunkInsertError;
+      }
+    }
+
+    const { error: extractionUpdateError } = await supabase
+      .from("document_contents")
+      .update({
+        extraction_status: "completed",
+        chunk_count: chunks.length,
+        raw_text: extraction.rawText,
+        page_count: extraction.pageCount,
+        extracted_at: new Date().toISOString(),
+        error_message: null,
+      })
+      .eq("document_id", documentId)
+      .eq("user_id", userId);
+
+    if (extractionUpdateError) {
+      throw extractionUpdateError;
+    }
+
+    return {
+      ok: true as const,
+      message: "PDF processed successfully.",
+    };
+  } catch (error) {
+    const message = formatActionError(error);
+
+    await supabase
+      .from("document_contents")
+      .update({
+        extraction_status: "failed",
+        chunk_count: 0,
+        raw_text: "",
+        page_count: null,
+        extracted_at: null,
+        error_message: message,
+      })
+      .eq("document_id", documentId)
+      .eq("user_id", userId);
+
+    await supabase
+      .from("document_chunks")
+      .delete()
+      .eq("document_id", documentId)
+      .eq("user_id", userId);
+
+    return {
+      ok: false as const,
+      message,
+    };
+  }
 }
 
 async function deleteStoredDocumentFile({
@@ -170,100 +286,22 @@ export async function uploadDocument(formData: FormData) {
     );
   }
 
-  const { error: contentInsertError } = await supabase.from("document_contents").insert({
-    document_id: document.id,
-    user_id: user.id,
-    extraction_status: "pending",
+  const result = await runDocumentExtraction({
+    supabase,
+    userId: user.id,
+    documentId: document.id,
+    sourceBuffer: await fileEntry.arrayBuffer(),
   });
-
-  if (contentInsertError) {
-    await supabase.from("documents").delete().eq("id", document.id);
-    await supabase.storage.from(bucket).remove([filePath]);
-
-    redirect(
-      buildRedirect({
-        error: contentInsertError.message,
-      }),
-    );
-  }
-
-  let successMessage = "PDF uploaded and text extracted successfully.";
-
-  try {
-    const extraction = await extractPdfText(await fileEntry.arrayBuffer());
-    const chunks = chunkExtractedText(extraction.rawText);
-
-    const { error: deleteChunksError } = await supabase
-      .from("document_chunks")
-      .delete()
-      .eq("document_id", document.id)
-      .eq("user_id", user.id);
-
-    if (deleteChunksError) {
-      throw deleteChunksError;
-    }
-
-    if (chunks.length > 0) {
-      const { error: chunkInsertError } = await supabase.from("document_chunks").insert(
-        chunks.map((chunk) => ({
-          document_id: document.id,
-          user_id: user.id,
-          chunk_index: chunk.chunkIndex,
-          content: chunk.content,
-          character_count: chunk.characterCount,
-          metadata: {
-            strategy: "paragraph-balanced-v1",
-          },
-        })),
-      );
-
-      if (chunkInsertError) {
-        throw chunkInsertError;
-      }
-    }
-
-    const { error: extractionUpdateError } = await supabase
-      .from("document_contents")
-      .update({
-        extraction_status: "completed",
-        chunk_count: chunks.length,
-        raw_text: extraction.rawText,
-        page_count: extraction.pageCount,
-        extracted_at: new Date().toISOString(),
-        error_message: null,
-      })
-      .eq("document_id", document.id)
-      .eq("user_id", user.id);
-
-    if (extractionUpdateError) {
-      throw extractionUpdateError;
-    }
-  } catch (error) {
-    const message = formatActionError(error);
-
-    await supabase
-      .from("document_contents")
-      .update({
-        extraction_status: "failed",
-        chunk_count: 0,
-        raw_text: "",
-        page_count: null,
-        extracted_at: null,
-        error_message: message,
-      })
-      .eq("document_id", document.id)
-      .eq("user_id", user.id);
-
-    await supabase.from("document_chunks").delete().eq("document_id", document.id).eq("user_id", user.id);
-
-    successMessage = "PDF uploaded, but text extraction failed for this document.";
-  }
 
   revalidatePath("/documents");
   redirect(
-    buildRedirect({
-      message: successMessage,
-    }),
+    result.ok
+      ? buildRedirect({
+          message: "PDF uploaded and text extracted successfully.",
+        })
+      : buildRedirect({
+          error: `PDF uploaded, but text extraction failed for this document. ${result.message}`,
+        }),
   );
 }
 
@@ -297,6 +335,114 @@ export async function deleteDocumentFromDetail(formData: FormData) {
   }
 
   await deleteStoredDocumentFile({
+    documentId,
+    redirectTo,
+  });
+}
+
+async function reprocessStoredDocument({
+  documentId,
+  redirectTo,
+}: {
+  documentId: string;
+  redirectTo: string;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/sign-in");
+  }
+
+  const { data: document, error: fetchError } = await supabase
+    .from("documents")
+    .select("id, title, file_path")
+    .eq("id", documentId)
+    .maybeSingle();
+
+  if (fetchError) {
+    redirect(
+      buildScopedRedirect(redirectTo, {
+        error: fetchError.message,
+      }),
+    );
+  }
+
+  if (!document) {
+    redirect(
+      buildScopedRedirect(redirectTo, {
+        error: "That document could not be found or does not belong to this account.",
+      }),
+    );
+  }
+
+  const bucket = process.env.SUPABASE_DOCUMENTS_BUCKET || DEFAULT_BUCKET;
+  const { data: downloadedFile, error: downloadError } = await supabase.storage
+    .from(bucket)
+    .download(document.file_path);
+
+  if (downloadError || !downloadedFile) {
+    redirect(
+      buildScopedRedirect(redirectTo, {
+        error: downloadError?.message ?? "The stored PDF could not be downloaded for reprocessing.",
+      }),
+    );
+  }
+
+  const result = await runDocumentExtraction({
+    supabase,
+    userId: user.id,
+    documentId: document.id,
+    sourceBuffer: await downloadedFile.arrayBuffer(),
+  });
+
+  revalidatePath("/documents");
+  revalidatePath(`/documents/${document.id}`);
+  revalidatePath("/chat");
+
+  redirect(
+    buildScopedRedirect(redirectTo, result.ok
+      ? {
+          message: `"${document.title}" was reprocessed successfully.`,
+        }
+      : {
+          error: `Reprocessing failed for "${document.title}". ${result.message}`,
+        }),
+  );
+}
+
+export async function reprocessDocumentFromList(formData: FormData) {
+  const documentId = String(formData.get("documentId") ?? "").trim();
+
+  if (!documentId) {
+    redirect(
+      buildRedirect({
+        error: "A document id is required to reprocess a document.",
+      }),
+    );
+  }
+
+  await reprocessStoredDocument({
+    documentId,
+    redirectTo: "/documents",
+  });
+}
+
+export async function reprocessDocumentFromDetail(formData: FormData) {
+  const documentId = String(formData.get("documentId") ?? "").trim();
+  const redirectTo = String(formData.get("redirectTo") ?? "/documents").trim() || "/documents";
+
+  if (!documentId) {
+    redirect(
+      buildScopedRedirect(redirectTo, {
+        error: "A document id is required to reprocess a document.",
+      }),
+    );
+  }
+
+  await reprocessStoredDocument({
     documentId,
     redirectTo,
   });

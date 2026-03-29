@@ -28,3 +28,7 @@ export function formatDocumentDate(value: string) {
     year: "numeric",
   }).format(new Date(value));
 }
+
+export function buildDocumentFileUrl(documentId: string, mode: "view" | "download") {
+  return `/documents/${documentId}/file?mode=${mode}`;
+}

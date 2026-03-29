@@ -1,16 +1,24 @@
-import { deleteDocumentFromDetail } from "@/app/(app)/documents/actions";
+import {
+  deleteDocumentFromDetail,
+  reprocessDocumentFromDetail,
+} from "@/app/(app)/documents/actions";
 import { DeleteDocumentForm } from "@/components/documents/delete-document-button";
+import { ReprocessDocumentForm } from "@/components/documents/reprocess-document-button";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatDocumentDate, formatFileSize } from "@/lib/documents";
+import { buildDocumentFileUrl, formatDocumentDate, formatFileSize } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
 type DocumentDetailPageProps = {
   params: Promise<{
     id: string;
+  }>;
+  searchParams: Promise<{
+    error?: string;
+    message?: string;
   }>;
 };
 
@@ -48,8 +56,15 @@ function getChunkPreview(content: string) {
   return `${normalized.slice(0, 357)}...`;
 }
 
-export default async function DocumentDetailPage({ params }: DocumentDetailPageProps) {
-  const [{ id }, supabase] = await Promise.all([params, createClient()]);
+export default async function DocumentDetailPage({
+  params,
+  searchParams,
+}: DocumentDetailPageProps) {
+  const [{ id }, { error: pageError, message }, supabase] = await Promise.all([
+    params,
+    searchParams,
+    createClient(),
+  ]);
 
   const { data: document, error } = await supabase
     .from("documents")
@@ -100,6 +115,30 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
               Back to documents
             </Button>
             <Button href="/chat">Search chunks</Button>
+            <Button
+              href={buildDocumentFileUrl(document.id, "view")}
+              variant="secondary"
+              external
+              target="_blank"
+              rel="noreferrer"
+            >
+              View PDF
+            </Button>
+            <Button
+              href={buildDocumentFileUrl(document.id, "download")}
+              variant="secondary"
+              external
+            >
+              Download PDF
+            </Button>
+            <ReprocessDocumentForm
+              action={reprocessDocumentFromDetail}
+              documentId={document.id}
+              redirectTo={`/documents/${document.id}`}
+              label="Reprocess document"
+              pendingLabel="Reprocessing..."
+              className="justify-center border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20"
+            />
             <DeleteDocumentForm
               action={deleteDocumentFromDetail}
               documentId={document.id}
@@ -112,6 +151,18 @@ export default async function DocumentDetailPage({ params }: DocumentDetailPageP
           </>
         }
       />
+
+      {pageError ? (
+        <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+          {pageError}
+        </div>
+      ) : null}
+
+      {message ? (
+        <div className="rounded-2xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+          {message}
+        </div>
+      ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         <div className="space-y-5">

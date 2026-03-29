@@ -24,9 +24,16 @@ type SharedProps = {
 
 type ButtonAsButtonProps = SharedProps & ComponentPropsWithoutRef<"button">;
 
+type ButtonAsAnchorProps = SharedProps &
+  Omit<ComponentPropsWithoutRef<"a">, "className"> & {
+    href: string;
+    external: true;
+  };
+
 type ButtonAsLinkProps = SharedProps &
   Omit<ComponentPropsWithoutRef<typeof Link>, "className"> & {
     href: string;
+    external?: false;
   };
 
 function getButtonClassName({
@@ -43,9 +50,21 @@ function getButtonClassName({
   );
 }
 
-export function Button(props: ButtonAsButtonProps | ButtonAsLinkProps) {
+export function Button(props: ButtonAsButtonProps | ButtonAsLinkProps | ButtonAsAnchorProps) {
   if ("href" in props) {
     const { children, variant, size, className, href, ...rest } = props;
+
+    if ("external" in props && props.external) {
+      return (
+        <a
+          href={href}
+          className={getButtonClassName({ variant, size, className })}
+          {...rest}
+        >
+          {children}
+        </a>
+      );
+    }
 
     return (
       <Link

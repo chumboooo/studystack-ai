@@ -1,11 +1,16 @@
-import { deleteDocumentFromList, uploadDocument } from "@/app/(app)/documents/actions";
+import {
+  deleteDocumentFromList,
+  reprocessDocumentFromList,
+  uploadDocument,
+} from "@/app/(app)/documents/actions";
 import { DeleteDocumentForm } from "@/components/documents/delete-document-button";
+import { ReprocessDocumentForm } from "@/components/documents/reprocess-document-button";
 import { PageHeader } from "@/components/app/page-header";
 import { UploadSubmitButton } from "@/components/documents/upload-submit-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatDocumentDate, formatFileSize } from "@/lib/documents";
+import { buildDocumentFileUrl, formatDocumentDate, formatFileSize } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
 type DocumentsPageProps = {
@@ -234,6 +239,33 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                       <Button href={`/documents/${document.id}`} variant="secondary">
                         View details
                       </Button>
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        <Button
+                          href={buildDocumentFileUrl(document.id, "view")}
+                          variant="ghost"
+                          external
+                          target="_blank"
+                          rel="noreferrer"
+                          className="justify-center border border-white/10 bg-white/[0.06] text-white hover:border-cyan-300/40 hover:bg-white/10"
+                        >
+                          View PDF
+                        </Button>
+                        <Button
+                          href={buildDocumentFileUrl(document.id, "download")}
+                          variant="ghost"
+                          external
+                          className="justify-center border border-white/10 bg-white/[0.06] text-white hover:border-cyan-300/40 hover:bg-white/10"
+                        >
+                          Download PDF
+                        </Button>
+                      </div>
+                      <ReprocessDocumentForm
+                        action={reprocessDocumentFromList}
+                        documentId={document.id}
+                        label="Reprocess document"
+                        pendingLabel="Reprocessing..."
+                        className="justify-center border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20"
+                      />
                       <DeleteDocumentForm
                         action={deleteDocumentFromList}
                         documentId={document.id}
