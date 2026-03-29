@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "StudyStack AI",
-  description: "A production-ready Next.js app for StudyStack AI.",
+  description: "AI-powered study workflows for documents, flashcards, quizzes, and chat.",
 };
 
 export default function RootLayout({
