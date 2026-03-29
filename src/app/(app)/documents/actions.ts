@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { extractPdfText } from "@/lib/pdf/extract-text";
 import { createClient } from "@/lib/supabase/server";
 
 const DEFAULT_BUCKET = "documents";
@@ -16,6 +17,14 @@ function sanitizeFileName(fileName: string) {
 
 function getDocumentTitle(fileName: string) {
   return fileName.replace(/\.pdf$/i, "").trim();
+}
+
+function formatActionError(error: unknown) {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+
+  return String(error);
 }
 
 export async function uploadDocument(formData: FormData) {
@@ -68,14 +77,18 @@ export async function uploadDocument(formData: FormData) {
     );
   }
 
-  const { error: insertError } = await supabase.from("documents").insert({
-    user_id: user.id,
-    title: documentTitle,
-    file_name: fileEntry.name,
-    file_path: filePath,
-    file_size: fileEntry.size,
-    mime_type: "application/pdf",
-  });
+  const { data: document, error: insertError } = await supabase
+    .from("documents")
+    .insert({
+      user_id: user.id,
+      title: documentTitle,
+      file_name: fileEntry.name,
+      file_path: filePath,
+      file_size: fileEntry.size,
+      mime_type: "application/pdf",
+    })
+    .select("id")
+    .single();
 
   if (insertError) {
     await supabase.storage.from(bucket).remove([filePath]);
@@ -87,10 +100,65 @@ export async function uploadDocument(formData: FormData) {
     );
   }
 
+  const { error: contentInsertError } = await supabase.from("document_contents").insert({
+    document_id: document.id,
+    user_id: user.id,
+    extraction_status: "pending",
+  });
+
+  if (contentInsertError) {
+    await supabase.from("documents").delete().eq("id", document.id);
+    await supabase.storage.from(bucket).remove([filePath]);
+
+    redirect(
+      buildRedirect({
+        error: contentInsertError.message,
+      }),
+    );
+  }
+
+  let successMessage = "PDF uploaded and text extracted successfully.";
+
+  try {
+    const extraction = await extractPdfText(await fileEntry.arrayBuffer());
+
+    const { error: extractionUpdateError } = await supabase
+      .from("document_contents")
+      .update({
+        extraction_status: "completed",
+        raw_text: extraction.rawText,
+        page_count: extraction.pageCount,
+        extracted_at: new Date().toISOString(),
+        error_message: null,
+      })
+      .eq("document_id", document.id)
+      .eq("user_id", user.id);
+
+    if (extractionUpdateError) {
+      throw extractionUpdateError;
+    }
+  } catch (error) {
+    const message = formatActionError(error);
+
+    await supabase
+      .from("document_contents")
+      .update({
+        extraction_status: "failed",
+        raw_text: "",
+        page_count: null,
+        extracted_at: null,
+        error_message: message,
+      })
+      .eq("document_id", document.id)
+      .eq("user_id", user.id);
+
+    successMessage = "PDF uploaded, but text extraction failed for this document.";
+  }
+
   revalidatePath("/documents");
   redirect(
     buildRedirect({
-      message: "PDF uploaded successfully.",
+      message: successMessage,
     }),
   );
 }

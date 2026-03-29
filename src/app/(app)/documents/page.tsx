@@ -22,10 +22,18 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
 
   const { data: documents, error } = await supabase
     .from("documents")
-    .select("id, title, file_name, file_path, file_size, mime_type, created_at")
+    .select(
+      "id, title, file_name, file_path, file_size, mime_type, created_at, document_contents(extraction_status, page_count, error_message)",
+    )
     .order("created_at", { ascending: false });
 
   const documentCount = documents?.length ?? 0;
+  const normalizedDocuments = (documents ?? []).map((document) => ({
+    ...document,
+    content: Array.isArray(document.document_contents)
+      ? document.document_contents[0]
+      : document.document_contents,
+  }));
 
   return (
     <div className="space-y-8">
@@ -72,7 +80,8 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
               <CardTitle>Upload a PDF</CardTitle>
               <CardDescription>
                 Uploads are restricted to the current signed-in user. A matching row is created in
-                the `documents` table after the file lands in Storage.
+                the `documents` table after the file lands in Storage, then PDF text is extracted
+                into a separate content layer for future chunking and search.
               </CardDescription>
             </div>
 
@@ -164,7 +173,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
             </div>
 
             <div className="grid gap-4">
-              {documents.map((document) => (
+              {normalizedDocuments.map((document) => (
                 <div
                   key={document.id}
                   className="rounded-2xl border border-white/10 bg-white/5 p-5"
@@ -177,6 +186,32 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                         <span>{document.mime_type}</span>
                         <span>{formatFileSize(document.file_size)}</span>
                         <span>{formatDocumentDate(document.created_at)}</span>
+                        {document.content?.page_count ? (
+                          <span>{document.content.page_count} pages</span>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <span
+                          className={
+                            document.content?.extraction_status === "completed"
+                              ? "rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-200"
+                              : document.content?.extraction_status === "failed"
+                                ? "rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-1 text-xs text-rose-200"
+                                : "rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs text-amber-200"
+                          }
+                        >
+                          {document.content?.extraction_status === "completed"
+                            ? "Text extracted"
+                            : document.content?.extraction_status === "failed"
+                              ? "Extraction failed"
+                              : "Extraction pending"}
+                        </span>
+                        {document.content?.extraction_status === "failed" &&
+                        document.content.error_message ? (
+                          <span className="text-xs text-slate-500">
+                            {document.content.error_message}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
 
