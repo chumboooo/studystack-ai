@@ -13,6 +13,7 @@ create table if not exists public.document_contents (
   user_id uuid not null references auth.users (id) on delete cascade,
   extraction_status text not null default 'pending'
     check (extraction_status in ('pending', 'completed', 'failed')),
+  chunk_count integer not null default 0,
   raw_text text not null default '',
   page_count integer,
   extracted_at timestamptz,
@@ -27,10 +28,17 @@ create table if not exists public.document_chunks (
   user_id uuid not null references auth.users (id) on delete cascade,
   chunk_index integer not null,
   content text not null,
+  character_count integer not null default 0,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default timezone('utc', now()),
   unique (document_id, chunk_index)
 );
+
+alter table public.document_contents
+  add column if not exists chunk_count integer not null default 0;
+
+alter table public.document_chunks
+  add column if not exists character_count integer not null default 0;
 
 create index if not exists document_contents_user_id_status_idx
   on public.document_contents (user_id, extraction_status);

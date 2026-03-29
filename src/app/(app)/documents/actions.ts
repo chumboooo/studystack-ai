@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { chunkExtractedText } from "@/lib/pdf/chunk-text";
 import { extractPdfText } from "@/lib/pdf/extract-text";
 import { createClient } from "@/lib/supabase/server";
 
@@ -121,11 +122,42 @@ export async function uploadDocument(formData: FormData) {
 
   try {
     const extraction = await extractPdfText(await fileEntry.arrayBuffer());
+    const chunks = chunkExtractedText(extraction.rawText);
+
+    const { error: deleteChunksError } = await supabase
+      .from("document_chunks")
+      .delete()
+      .eq("document_id", document.id)
+      .eq("user_id", user.id);
+
+    if (deleteChunksError) {
+      throw deleteChunksError;
+    }
+
+    if (chunks.length > 0) {
+      const { error: chunkInsertError } = await supabase.from("document_chunks").insert(
+        chunks.map((chunk) => ({
+          document_id: document.id,
+          user_id: user.id,
+          chunk_index: chunk.chunkIndex,
+          content: chunk.content,
+          character_count: chunk.characterCount,
+          metadata: {
+            strategy: "paragraph-balanced-v1",
+          },
+        })),
+      );
+
+      if (chunkInsertError) {
+        throw chunkInsertError;
+      }
+    }
 
     const { error: extractionUpdateError } = await supabase
       .from("document_contents")
       .update({
         extraction_status: "completed",
+        chunk_count: chunks.length,
         raw_text: extraction.rawText,
         page_count: extraction.pageCount,
         extracted_at: new Date().toISOString(),
@@ -144,6 +176,7 @@ export async function uploadDocument(formData: FormData) {
       .from("document_contents")
       .update({
         extraction_status: "failed",
+        chunk_count: 0,
         raw_text: "",
         page_count: null,
         extracted_at: null,
@@ -151,6 +184,8 @@ export async function uploadDocument(formData: FormData) {
       })
       .eq("document_id", document.id)
       .eq("user_id", user.id);
+
+    await supabase.from("document_chunks").delete().eq("document_id", document.id).eq("user_id", user.id);
 
     successMessage = "PDF uploaded, but text extraction failed for this document.";
   }

@@ -23,7 +23,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
   const { data: documents, error } = await supabase
     .from("documents")
     .select(
-      "id, title, file_name, file_path, file_size, mime_type, created_at, document_contents(extraction_status, page_count, error_message)",
+      "id, title, file_name, file_path, file_size, mime_type, created_at, document_contents(extraction_status, page_count, chunk_count, error_message)",
     )
     .order("created_at", { ascending: false });
 
@@ -188,6 +188,10 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                         <span>{formatDocumentDate(document.created_at)}</span>
                         {document.content?.page_count ? (
                           <span>{document.content.page_count} pages</span>
+                        ) : null}
+                        {typeof document.content?.chunk_count === "number" &&
+                        document.content.chunk_count > 0 ? (
+                          <span>{document.content.chunk_count} chunks</span>
                         ) : null}
                       </div>
                       <div className="flex flex-wrap gap-2 pt-1">

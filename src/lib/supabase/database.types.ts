@@ -5,6 +5,7 @@ export type Database = {
     Tables: {
       document_chunks: {
         Row: {
+          character_count: number;
           chunk_index: number;
           content: string;
           created_at: string;
@@ -14,6 +15,7 @@ export type Database = {
           user_id: string;
         };
         Insert: {
+          character_count: number;
           chunk_index: number;
           content: string;
           created_at?: string;
@@ -23,6 +25,7 @@ export type Database = {
           user_id: string;
         };
         Update: {
+          character_count?: number;
           chunk_index?: number;
           content?: string;
           created_at?: string;
@@ -35,6 +38,7 @@ export type Database = {
       };
       document_contents: {
         Row: {
+          chunk_count: number;
           created_at: string;
           document_id: string;
           error_message: string | null;
@@ -46,6 +50,7 @@ export type Database = {
           user_id: string;
         };
         Insert: {
+          chunk_count?: number;
           created_at?: string;
           document_id: string;
           error_message?: string | null;
@@ -57,6 +62,7 @@ export type Database = {
           user_id: string;
         };
         Update: {
+          chunk_count?: number;
           created_at?: string;
           document_id?: string;
           error_message?: string | null;
