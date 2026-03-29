@@ -110,7 +110,24 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      search_document_chunks: {
+        Args: {
+          match_count?: number;
+          query_text: string;
+        };
+        Returns: {
+          character_count: number;
+          chunk_id: string;
+          chunk_index: number;
+          content: string;
+          created_at: string;
+          document_id: string;
+          document_title: string;
+          rank: number;
+        }[];
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

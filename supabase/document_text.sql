@@ -49,6 +49,10 @@ create index if not exists document_chunks_document_id_idx
 create index if not exists document_chunks_user_id_idx
   on public.document_chunks (user_id);
 
+create index if not exists document_chunks_content_fts_idx
+  on public.document_chunks
+  using gin (to_tsvector('english', content));
+
 drop trigger if exists set_document_contents_updated_at on public.document_contents;
 create trigger set_document_contents_updated_at
 before update on public.document_contents
@@ -107,3 +111,48 @@ create policy "Users can delete their own document chunks"
   on public.document_chunks
   for delete
   using (auth.uid() = user_id);
+
+create or replace function public.search_document_chunks(query_text text, match_count integer default 8)
+returns table (
+  chunk_id uuid,
+  document_id uuid,
+  document_title text,
+  chunk_index integer,
+  content text,
+  character_count integer,
+  created_at timestamptz,
+  rank real
+)
+language sql
+stable
+as $$
+  with prepared as (
+    select
+      trim(query_text) as normalized_query,
+      websearch_to_tsquery('english', trim(query_text)) as ts_query
+  )
+  select
+    chunks.id as chunk_id,
+    chunks.document_id,
+    documents.title as document_title,
+    chunks.chunk_index,
+    chunks.content,
+    chunks.character_count,
+    chunks.created_at,
+    ts_rank_cd(to_tsvector('english', chunks.content), prepared.ts_query)::real as rank
+  from public.document_chunks as chunks
+  join public.documents as documents
+    on documents.id = chunks.document_id
+  cross join prepared
+  where chunks.user_id = auth.uid()
+    and prepared.normalized_query <> ''
+    and (
+      to_tsvector('english', chunks.content) @@ prepared.ts_query
+      or chunks.content ilike '%' || prepared.normalized_query || '%'
+    )
+  order by
+    (to_tsvector('english', chunks.content) @@ prepared.ts_query) desc,
+    ts_rank_cd(to_tsvector('english', chunks.content), prepared.ts_query) desc,
+    chunks.created_at desc
+  limit greatest(coalesce(match_count, 8), 1);
+$$;
