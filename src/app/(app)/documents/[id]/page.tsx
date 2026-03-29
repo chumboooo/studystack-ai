@@ -1,12 +1,16 @@
 import {
   deleteDocumentFromDetail,
+  renameDocumentFromDetail,
   reprocessDocumentFromDetail,
 } from "@/app/(app)/documents/actions";
 import { DeleteDocumentForm } from "@/components/documents/delete-document-button";
+import { DocumentStatusBadge, getDocumentStatusLabel } from "@/components/documents/document-status-badge";
 import { ReprocessDocumentForm } from "@/components/documents/reprocess-document-button";
+import { DocumentTitleForm } from "@/components/documents/document-title-form";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
+import { AlertBanner } from "@/components/ui/alert-banner";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buildDocumentFileUrl, formatDocumentDate, formatFileSize } from "@/lib/documents";
@@ -21,30 +25,6 @@ type DocumentDetailPageProps = {
     message?: string;
   }>;
 };
-
-function getStatusBadge(status: "completed" | "failed" | "pending" | null | undefined) {
-  if (status === "completed") {
-    return "rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-200";
-  }
-
-  if (status === "failed") {
-    return "rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-1 text-xs text-rose-200";
-  }
-
-  return "rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs text-amber-200";
-}
-
-function getStatusLabel(status: "completed" | "failed" | "pending" | null | undefined) {
-  if (status === "completed") {
-    return "Text extracted";
-  }
-
-  if (status === "failed") {
-    return "Extraction failed";
-  }
-
-  return "Extraction pending";
-}
 
 function getChunkPreview(content: string) {
   const normalized = content.replace(/\s+/g, " ").trim();
@@ -152,17 +132,9 @@ export default async function DocumentDetailPage({
         }
       />
 
-      {pageError ? (
-        <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
-          {pageError}
-        </div>
-      ) : null}
+      {pageError ? <AlertBanner tone="error">{pageError}</AlertBanner> : null}
 
-      {message ? (
-        <div className="rounded-2xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
-          {message}
-        </div>
-      ) : null}
+      {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
 
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         <div className="space-y-5">
@@ -176,6 +148,23 @@ export default async function DocumentDetailPage({
             </div>
 
             <div className="grid gap-4">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                <div className="flex flex-wrap items-center gap-3">
+                  <DocumentStatusBadge status={content?.extraction_status} />
+                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                    {getDocumentStatusLabel(content?.extraction_status)}
+                  </span>
+                </div>
+                <div className="mt-4">
+                  <DocumentTitleForm
+                    action={renameDocumentFromDetail}
+                    documentId={document.id}
+                    initialTitle={document.title}
+                    redirectTo={`/documents/${document.id}`}
+                  />
+                </div>
+              </div>
+
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                 <p className="text-sm text-slate-400">File name</p>
                 <p className="mt-2 break-all text-base font-medium text-white">
@@ -205,9 +194,14 @@ export default async function DocumentDetailPage({
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                   <p className="text-sm text-slate-400">Extraction status</p>
-                  <div className="mt-3">
-                    <span className={getStatusBadge(content?.extraction_status)}>
-                      {getStatusLabel(content?.extraction_status)}
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <DocumentStatusBadge status={content?.extraction_status} />
+                    <span className="text-sm text-slate-400">
+                      {content?.extraction_status === "completed"
+                        ? "Processed and ready for search."
+                        : content?.extraction_status === "failed"
+                          ? "Last attempt failed."
+                          : "Waiting for extraction to finish."}
                     </span>
                   </div>
                 </div>
@@ -236,9 +230,9 @@ export default async function DocumentDetailPage({
               </div>
 
               {content?.extraction_status === "failed" && content.error_message ? (
-                <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 p-5 text-sm leading-6 text-rose-100">
+                <AlertBanner tone="error" className="p-5">
                   {content.error_message}
-                </div>
+                </AlertBanner>
               ) : null}
             </div>
           </Card>
@@ -251,10 +245,17 @@ export default async function DocumentDetailPage({
                   Full raw text stored for this document before future chunk retrieval or model use.
                 </CardDescription>
               </div>
-              <div className="max-h-[34rem] overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/60 p-5">
-                <pre className="whitespace-pre-wrap text-sm leading-7 text-slate-300">
-                  {content.raw_text}
-                </pre>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                <div className="max-h-[34rem] overflow-y-auto rounded-[1.1rem] bg-slate-950/70 p-5">
+                  <div className="mb-4 flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                    <span>Readable text layer</span>
+                    <span>{content.page_count ?? "?"} pages</span>
+                    <span>{content.chunk_count ?? chunks.length} chunks</span>
+                  </div>
+                  <pre className="whitespace-pre-wrap text-sm leading-8 text-slate-200">
+                    {content.raw_text}
+                  </pre>
+                </div>
               </div>
             </Card>
           ) : (
@@ -293,8 +294,10 @@ export default async function DocumentDetailPage({
                 >
                   <div className="space-y-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-400">
-                        <span className="font-medium text-white">Chunk {chunk.chunk_index + 1}</span>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-400">
+                        <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
+                          Chunk {chunk.chunk_index + 1}
+                        </span>
                         <span>{chunk.character_count} chars</span>
                         <span>{formatDocumentDate(chunk.created_at)}</span>
                       </div>
@@ -304,7 +307,7 @@ export default async function DocumentDetailPage({
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
                         Preview
                       </p>
-                      <p className="mt-3 text-sm leading-7 text-slate-300">
+                      <p className="mt-3 text-sm leading-7 text-slate-200">
                         {getChunkPreview(chunk.content)}
                       </p>
                     </div>
@@ -314,7 +317,7 @@ export default async function DocumentDetailPage({
                         View full chunk content
                       </summary>
                       <div className="mt-4 border-t border-white/10 pt-4">
-                        <pre className="whitespace-pre-wrap text-sm leading-7 text-slate-300">
+                        <pre className="whitespace-pre-wrap text-sm leading-8 text-slate-300">
                           {chunk.content}
                         </pre>
                       </div>
