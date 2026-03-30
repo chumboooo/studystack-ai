@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { embedTexts, serializeEmbedding } from "@/lib/openai/embeddings";
 import { chunkExtractedText } from "@/lib/pdf/chunk-text";
 import { extractPdfText } from "@/lib/pdf/extract-text";
 import { createClient } from "@/lib/supabase/server";
@@ -74,23 +75,59 @@ async function runDocumentExtraction({
   try {
     const extraction = await extractPdfText(sourceBuffer);
     const chunks = chunkExtractedText(extraction.rawText);
+    let embeddingErrorMessage: string | null = null;
 
     if (chunks.length > 0) {
-      const { error: chunkInsertError } = await supabase.from("document_chunks").insert(
-        chunks.map((chunk) => ({
-          document_id: documentId,
-          user_id: userId,
-          chunk_index: chunk.chunkIndex,
-          content: chunk.content,
-          character_count: chunk.characterCount,
-          metadata: {
-            strategy: "paragraph-balanced-v1",
-          },
-        })),
-      );
+      const { data: insertedChunks, error: chunkInsertError } = await supabase
+        .from("document_chunks")
+        .insert(
+          chunks.map((chunk) => ({
+            document_id: documentId,
+            user_id: userId,
+            chunk_index: chunk.chunkIndex,
+            content: chunk.content,
+            character_count: chunk.characterCount,
+            metadata: {
+              strategy: "paragraph-balanced-v1",
+            },
+          })),
+        )
+        .select("id, chunk_index, content");
 
       if (chunkInsertError) {
         throw chunkInsertError;
+      }
+
+      try {
+        const embeddings = await embedTexts(insertedChunks.map((chunk) => chunk.content));
+
+        await Promise.all(
+          insertedChunks.map(async (chunk, index) => {
+            const embedding = embeddings[index];
+
+            if (!embedding || embedding.length === 0) {
+              return;
+            }
+
+            const { error: embeddingUpdateError } = await supabase
+              .from("document_chunks")
+              .update({
+                embedding: serializeEmbedding(embedding),
+                metadata: {
+                  strategy: "paragraph-balanced-v1",
+                  embedding_model: process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small",
+                },
+              })
+              .eq("id", chunk.id)
+              .eq("user_id", userId);
+
+            if (embeddingUpdateError) {
+              throw embeddingUpdateError;
+            }
+          }),
+        );
+      } catch (error) {
+        embeddingErrorMessage = `Embeddings were skipped: ${formatActionError(error)}`;
       }
     }
 
@@ -102,7 +139,7 @@ async function runDocumentExtraction({
         raw_text: extraction.rawText,
         page_count: extraction.pageCount,
         extracted_at: new Date().toISOString(),
-        error_message: null,
+        error_message: embeddingErrorMessage,
       })
       .eq("document_id", documentId)
       .eq("user_id", userId);
@@ -113,7 +150,9 @@ async function runDocumentExtraction({
 
     return {
       ok: true as const,
-      message: "PDF processed successfully.",
+      message: embeddingErrorMessage
+        ? `PDF processed successfully, but semantic embeddings could not be generated. ${embeddingErrorMessage}`
+        : "PDF processed successfully.",
     };
   } catch (error) {
     const message = formatActionError(error);
@@ -382,7 +421,7 @@ export async function uploadDocument(formData: FormData) {
   redirect(
     result.ok
       ? buildRedirect({
-          message: "PDF uploaded and text extracted successfully.",
+          message: result.message,
         })
       : buildRedirect({
           error: `PDF uploaded, but text extraction failed for this document. ${result.message}`,
@@ -490,7 +529,7 @@ async function reprocessStoredDocument({
   redirect(
     buildScopedRedirect(redirectTo, result.ok
       ? {
-          message: `"${document.title}" was reprocessed successfully.`,
+          message: `"${document.title}" was reprocessed successfully. ${result.message}`,
         }
       : {
           error: `Reprocessing failed for "${document.title}". ${result.message}`,

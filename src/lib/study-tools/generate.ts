@@ -1,0 +1,384 @@
+import { getGroundedAnswerModel, getOpenAIClient } from "@/lib/openai/server";
+import { selectStudyChunks } from "@/lib/study-tools/source-selection";
+import type { StudyChunk } from "@/lib/study-tools/retrieval";
+
+const MAX_SOURCE_CHUNKS = 6;
+const MAX_CHARS_PER_CHUNK = 1000;
+const MAX_TOTAL_CHARS = 5200;
+const MAX_GENERATION_PASSES = 3;
+
+type PreparedSource = {
+  label: string;
+  chunk: StudyChunk;
+};
+
+type GeneratedFlashcard = {
+  front: string;
+  back: string;
+  sourceLabel: string;
+  sourceChunk: StudyChunk;
+};
+
+type GeneratedQuizQuestion = {
+  question: string;
+  choices: string[];
+  correctChoiceIndex: number;
+  explanation: string;
+  sourceLabel: string;
+  sourceChunk: StudyChunk;
+};
+
+type FlashcardGenerationResult = {
+  items: GeneratedFlashcard[];
+  requestedCount: number;
+};
+
+type QuizGenerationResult = {
+  items: GeneratedQuizQuestion[];
+  requestedCount: number;
+};
+
+function prepareSources(chunks: StudyChunk[], titleHint: string) {
+  let remaining = MAX_TOTAL_CHARS;
+  const selectedChunks = selectStudyChunks({
+    chunks,
+    queryText: titleHint,
+    limit: MAX_SOURCE_CHUNKS,
+  });
+
+  return selectedChunks
+    .map((chunk, index) => {
+      const excerpt = chunk.content.slice(0, Math.min(MAX_CHARS_PER_CHUNK, remaining)).trim();
+      remaining -= excerpt.length;
+
+      return {
+        label: `S${index + 1}`,
+        chunk: {
+          ...chunk,
+          content: excerpt,
+        },
+      };
+    })
+    .filter((source) => source.chunk.content.length > 0);
+}
+
+function extractJsonArray(rawText: string) {
+  const trimmed = rawText.trim();
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const fenced = trimmed.match(/```json\s*([\s\S]*?)```/i) ?? trimmed.match(/```\s*([\s\S]*?)```/i);
+
+    if (fenced?.[1]) {
+      return JSON.parse(fenced[1].trim());
+    }
+
+    const arrayStart = trimmed.indexOf("[");
+    const arrayEnd = trimmed.lastIndexOf("]");
+
+    if (arrayStart >= 0 && arrayEnd > arrayStart) {
+      return JSON.parse(trimmed.slice(arrayStart, arrayEnd + 1));
+    }
+
+    throw new Error("The model did not return valid JSON.");
+  }
+}
+
+function getSourceMap(sources: PreparedSource[]) {
+  return new Map(sources.map((source) => [source.label.toLowerCase(), source.chunk]));
+}
+
+function normalizeChoiceArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((choice) => (typeof choice === "string" ? choice.trim() : "")).filter(Boolean);
+}
+
+function resolveCorrectChoiceIndex(
+  item: Record<string, unknown>,
+  choices: string[],
+) {
+  const numericIndexCandidates = [
+    item.correctChoiceIndex,
+    item.correctIndex,
+    item.answerIndex,
+  ];
+
+  for (const candidate of numericIndexCandidates) {
+    if (typeof candidate === "number" && candidate >= 0 && candidate < choices.length) {
+      return candidate;
+    }
+  }
+
+  const stringAnswerCandidates = [item.correctAnswer, item.answer];
+
+  for (const candidate of stringAnswerCandidates) {
+    if (typeof candidate === "string") {
+      const normalizedCandidate = candidate.trim().toLowerCase();
+      const choiceIndex = choices.findIndex(
+        (choice) => choice.trim().toLowerCase() === normalizedCandidate,
+      );
+
+      if (choiceIndex >= 0) {
+        return choiceIndex;
+      }
+    }
+  }
+
+  return -1;
+}
+
+async function requestQuizPayload({
+  titleHint,
+  sources,
+  questionCount,
+  retry,
+  existingQuestions = [],
+}: {
+  titleHint: string;
+  sources: PreparedSource[];
+  questionCount: number;
+  retry?: boolean;
+  existingQuestions?: string[];
+}) {
+  const client = getOpenAIClient();
+
+  return client.responses.create({
+    model: getGroundedAnswerModel(),
+    reasoning: {
+      effort: "low",
+    },
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text: retry
+              ? "Return only valid JSON. Create grounded multiple-choice quiz questions using only the provided source excerpts. Favor definitions, comparisons, mechanisms, cause/effect, and practical concept checks. Avoid headings, topic lists, and trivia about what topics appear. Return a JSON array with exactly the requested number of items unless the sources are truly insufficient. Each item must contain: question, choices, correctChoiceIndex, explanation, sourceLabel. choices must contain exactly 4 strings. Distractors should be plausible but contradicted by or unsupported by the source set. Do not include markdown fences."
+              : "Create grounded multiple-choice quiz questions using only the provided source excerpts. Favor concept-checking questions about definitions, differences, mechanisms, relationships, and reasoning. Avoid headings, topic lists, and questions about what topics are mentioned. Return JSON only as an array with exactly the requested number of items unless the sources are genuinely insufficient. Each item must contain: question, choices, correctChoiceIndex, explanation, sourceLabel. choices must contain exactly 4 distinct strings. Distractors should be plausible, educational, and still grounded in the domain of the source content. Do not invent facts or use missing source labels.",
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: `Create ${questionCount} multiple-choice questions for: ${titleHint}${existingQuestions.length > 0 ? `\n\nDo not repeat or closely paraphrase these existing questions:\n- ${existingQuestions.join("\n- ")}` : ""}\n\nSources:\n${sources
+              .map(
+                ({ label, chunk }) =>
+                  `[${label}] ${chunk.document_title} (chunk ${chunk.chunk_index + 1})\n${chunk.content}`,
+              )
+              .join("\n\n")}`,
+          },
+        ],
+      },
+    ],
+  });
+}
+
+export async function generateFlashcardsFromChunks({
+  chunks,
+  titleHint,
+  cardCount = 6,
+}: {
+  chunks: StudyChunk[];
+  titleHint: string;
+  cardCount?: number;
+}): Promise<FlashcardGenerationResult> {
+  const sources = prepareSources(chunks, titleHint);
+
+  if (sources.length === 0) {
+    throw new Error("No useful chunks were available for flashcard generation.");
+  }
+
+  const client = getOpenAIClient();
+  const sourceMap = getSourceMap(sources);
+  const collected = new Map<string, GeneratedFlashcard>();
+
+  for (let pass = 0; pass < MAX_GENERATION_PASSES && collected.size < cardCount; pass += 1) {
+    const remainingCount = cardCount - collected.size;
+    const retry = pass > 0;
+    const existingPrompts = Array.from(collected.values()).map((item) => item.front);
+    const response = await client.responses.create({
+      model: getGroundedAnswerModel(),
+      reasoning: {
+        effort: "low",
+      },
+      input: [
+        {
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text: retry
+                ? "Return only valid JSON. Create grounded, study-ready flashcards using only the provided source excerpts. Favor active-recall prompts about definitions, distinctions, mechanisms, examples, and cause/effect. Avoid cards that merely restate headings, topic lists, or section labels. Return a JSON array with exactly the requested number of items unless the sources are genuinely insufficient. Each item must contain: front, back, sourceLabel. Keep fronts concise and useful for active recall. Do not include markdown fences."
+                : "Create grounded, study-ready flashcards using only the provided source excerpts. Favor active-recall prompts about definitions, comparisons, mechanisms, relationships, and concrete facts. Avoid cards that simply ask what topics are listed or repeat headings. Return JSON only as an array with exactly the requested number of items unless the sources are genuinely insufficient. Each item must contain: front, back, sourceLabel. Keep fronts concise, specific, and useful for real studying. Do not invent material or use missing source labels.",
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: `Create ${remainingCount} strong flashcards for: ${titleHint}${existingPrompts.length > 0 ? `\n\nDo not repeat or closely paraphrase these existing flashcard fronts:\n- ${existingPrompts.join("\n- ")}` : ""}\n\nSources:\n${sources
+                .map(
+                  ({ label, chunk }) =>
+                    `[${label}] ${chunk.document_title} (chunk ${chunk.chunk_index + 1})\n${chunk.content}`,
+                )
+                .join("\n\n")}`,
+            },
+          ],
+        },
+      ],
+    });
+
+    let parsed: unknown;
+
+    try {
+      parsed = extractJsonArray(response.output_text);
+    } catch {
+      continue;
+    }
+
+    if (!Array.isArray(parsed)) {
+      continue;
+    }
+
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+
+      const front = typeof item.front === "string" ? item.front.trim() : "";
+      const back = typeof item.back === "string" ? item.back.trim() : "";
+      const sourceLabel = typeof item.sourceLabel === "string" ? item.sourceLabel.trim() : "";
+      const sourceChunk = sourceMap.get(sourceLabel.toLowerCase());
+      const dedupeKey = `${front.toLowerCase()}|${back.toLowerCase()}`;
+
+      if (!front || !back || !sourceChunk || collected.has(dedupeKey)) {
+        continue;
+      }
+
+      collected.set(dedupeKey, {
+        front,
+        back,
+        sourceLabel,
+        sourceChunk,
+      });
+
+      if (collected.size >= cardCount) {
+        break;
+      }
+    }
+  }
+
+  const items = Array.from(collected.values()).slice(0, cardCount);
+
+  if (items.length === 0) {
+    throw new Error("The model returned flashcard output, but none of the cards were usable.");
+  }
+
+  return {
+    items,
+    requestedCount: cardCount,
+  };
+}
+
+export async function generateQuizFromChunks({
+  chunks,
+  titleHint,
+  questionCount = 5,
+}: {
+  chunks: StudyChunk[];
+  titleHint: string;
+  questionCount?: number;
+}): Promise<QuizGenerationResult> {
+  const sources = prepareSources(chunks, titleHint);
+
+  if (sources.length === 0) {
+    throw new Error("No useful chunks were available for quiz generation.");
+  }
+
+  const sourceMap = getSourceMap(sources);
+  const collected = new Map<string, GeneratedQuizQuestion>();
+
+  for (let pass = 0; pass < MAX_GENERATION_PASSES && collected.size < questionCount; pass += 1) {
+    const remainingCount = questionCount - collected.size;
+    const retry = pass > 0;
+    const response = await requestQuizPayload({
+      titleHint,
+      sources,
+      questionCount: remainingCount,
+      retry,
+      existingQuestions: Array.from(collected.values()).map((item) => item.question),
+    });
+    let parsed: unknown;
+
+    try {
+      parsed = extractJsonArray(response.output_text);
+    } catch {
+      continue;
+    }
+
+    if (!Array.isArray(parsed)) {
+      continue;
+    }
+
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+
+      const record = item as Record<string, unknown>;
+      const question = typeof record.question === "string" ? record.question.trim() : "";
+      const explanation = typeof record.explanation === "string" ? record.explanation.trim() : "";
+      const sourceLabel = typeof record.sourceLabel === "string" ? record.sourceLabel.trim() : "";
+      const sourceChunk = sourceMap.get(sourceLabel.toLowerCase());
+      const choices = normalizeChoiceArray(record.choices ?? record.options).slice(0, 4);
+      const correctChoiceIndex = resolveCorrectChoiceIndex(record, choices);
+      const dedupeKey = question.toLowerCase();
+
+      if (
+        !question ||
+        !explanation ||
+        !sourceChunk ||
+        choices.length !== 4 ||
+        correctChoiceIndex < 0 ||
+        correctChoiceIndex > 3 ||
+        collected.has(dedupeKey)
+      ) {
+        continue;
+      }
+
+      collected.set(dedupeKey, {
+        question,
+        choices,
+        correctChoiceIndex,
+        explanation,
+        sourceLabel: sourceLabel || "S1",
+        sourceChunk,
+      });
+
+      if (collected.size >= questionCount) {
+        break;
+      }
+    }
+  }
+
+  const items = Array.from(collected.values()).slice(0, questionCount);
+
+  if (items.length === 0) {
+    throw new Error("The model returned quiz output, but none of the questions were usable.");
+  }
+
+  return {
+    items,
+    requestedCount: questionCount,
+  };
+}

@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { generateGroundedAnswer } from "@/lib/chat/grounded-answer";
+import { generateGroundedAnswer, type RetrievalChunk } from "@/lib/chat/grounded-answer";
+import { retrieveGroundingChunks } from "@/lib/chat/retrieve-grounding";
 import { createClient } from "@/lib/supabase/server";
 
 function buildChatRedirect(params: Record<string, string>) {
@@ -82,16 +83,18 @@ export async function submitGroundedQuestion(formData: FormData) {
     activeSessionId = newSession.id;
   }
 
-  const { data: retrievedChunks, error: retrievalError } = await supabase.rpc("search_document_chunks", {
-    query_text: question,
-    match_count: 5,
-  });
+  let retrievedChunks: RetrievalChunk[];
 
-  if (retrievalError) {
+  try {
+    retrievedChunks = await retrieveGroundingChunks({
+      supabase,
+      question,
+    });
+  } catch (error) {
     redirect(
       buildChatRedirect({
         session: activeSessionId,
-        error: retrievalError.message,
+        error: error instanceof Error ? error.message : String(error),
         q: question,
       }),
     );

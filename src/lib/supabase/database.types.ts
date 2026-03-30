@@ -3,6 +3,156 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      flashcard_sets: {
+        Row: {
+          created_at: string;
+          document_id: string | null;
+          id: string;
+          query_text: string | null;
+          source_mode: "document" | "retrieval";
+          title: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          document_id?: string | null;
+          id?: string;
+          query_text?: string | null;
+          source_mode: "document" | "retrieval";
+          title: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          document_id?: string | null;
+          id?: string;
+          query_text?: string | null;
+          source_mode?: "document" | "retrieval";
+          title?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      flashcards: {
+        Row: {
+          answer: string;
+          created_at: string;
+          id: string;
+          prompt: string;
+          set_id: string;
+          source_chunk_id: string | null;
+          source_chunk_index: number;
+          source_document_id: string | null;
+          source_document_title: string;
+          user_id: string;
+        };
+        Insert: {
+          answer: string;
+          created_at?: string;
+          id?: string;
+          prompt: string;
+          set_id: string;
+          source_chunk_id?: string | null;
+          source_chunk_index: number;
+          source_document_id?: string | null;
+          source_document_title: string;
+          user_id: string;
+        };
+        Update: {
+          answer?: string;
+          created_at?: string;
+          id?: string;
+          prompt?: string;
+          set_id?: string;
+          source_chunk_id?: string | null;
+          source_chunk_index?: number;
+          source_document_id?: string | null;
+          source_document_title?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      quiz_questions: {
+        Row: {
+          choices: Json;
+          correct_choice_index: number;
+          created_at: string;
+          explanation: string;
+          id: string;
+          question: string;
+          set_id: string;
+          source_chunk_id: string | null;
+          source_chunk_index: number;
+          source_document_id: string | null;
+          source_document_title: string;
+          user_id: string;
+        };
+        Insert: {
+          choices?: Json;
+          correct_choice_index: number;
+          created_at?: string;
+          explanation: string;
+          id?: string;
+          question: string;
+          set_id: string;
+          source_chunk_id?: string | null;
+          source_chunk_index: number;
+          source_document_id?: string | null;
+          source_document_title: string;
+          user_id: string;
+        };
+        Update: {
+          choices?: Json;
+          correct_choice_index?: number;
+          created_at?: string;
+          explanation?: string;
+          id?: string;
+          question?: string;
+          set_id?: string;
+          source_chunk_id?: string | null;
+          source_chunk_index?: number;
+          source_document_id?: string | null;
+          source_document_title?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      quiz_sets: {
+        Row: {
+          created_at: string;
+          document_id: string | null;
+          id: string;
+          query_text: string | null;
+          source_mode: "document" | "retrieval";
+          title: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          document_id?: string | null;
+          id?: string;
+          query_text?: string | null;
+          source_mode: "document" | "retrieval";
+          title: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          document_id?: string | null;
+          id?: string;
+          query_text?: string | null;
+          source_mode?: "document" | "retrieval";
+          title?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       chat_sessions: {
         Row: {
           created_at: string;
@@ -112,6 +262,7 @@ export type Database = {
           content: string;
           created_at: string;
           document_id: string;
+          embedding: string | null;
           id: string;
           metadata: Json;
           user_id: string;
@@ -122,6 +273,7 @@ export type Database = {
           content: string;
           created_at?: string;
           document_id: string;
+          embedding?: string | null;
           id?: string;
           metadata?: Json;
           user_id: string;
@@ -132,6 +284,7 @@ export type Database = {
           content?: string;
           created_at?: string;
           document_id?: string;
+          embedding?: string | null;
           id?: string;
           metadata?: Json;
           user_id?: string;
@@ -227,6 +380,22 @@ export type Database = {
           document_id: string;
           document_title: string;
           rank: number;
+        }[];
+      };
+      match_document_chunks_by_embedding: {
+        Args: {
+          match_count?: number;
+          query_embedding: string;
+        };
+        Returns: {
+          character_count: number;
+          chunk_id: string;
+          chunk_index: number;
+          content: string;
+          created_at: string;
+          document_id: string;
+          document_title: string;
+          similarity: number;
         }[];
       };
     };

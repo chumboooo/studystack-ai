@@ -1,3 +1,5 @@
+create extension if not exists vector;
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -40,6 +42,9 @@ alter table public.document_contents
 alter table public.document_chunks
   add column if not exists character_count integer not null default 0;
 
+alter table public.document_chunks
+  add column if not exists embedding vector(1536);
+
 create index if not exists document_contents_user_id_status_idx
   on public.document_contents (user_id, extraction_status);
 
@@ -52,6 +57,10 @@ create index if not exists document_chunks_user_id_idx
 create index if not exists document_chunks_content_fts_idx
   on public.document_chunks
   using gin (to_tsvector('english', content));
+
+create index if not exists document_chunks_embedding_idx
+  on public.document_chunks
+  using hnsw (embedding vector_cosine_ops);
 
 drop trigger if exists set_document_contents_updated_at on public.document_contents;
 create trigger set_document_contents_updated_at
@@ -154,5 +163,40 @@ as $$
     (to_tsvector('english', chunks.content) @@ prepared.ts_query) desc,
     ts_rank_cd(to_tsvector('english', chunks.content), prepared.ts_query) desc,
     chunks.created_at desc
+  limit greatest(coalesce(match_count, 8), 1);
+$$;
+
+create or replace function public.match_document_chunks_by_embedding(
+  query_embedding vector(1536),
+  match_count integer default 8
+)
+returns table (
+  chunk_id uuid,
+  document_id uuid,
+  document_title text,
+  chunk_index integer,
+  content text,
+  character_count integer,
+  created_at timestamptz,
+  similarity real
+)
+language sql
+stable
+as $$
+  select
+    chunks.id as chunk_id,
+    chunks.document_id,
+    documents.title as document_title,
+    chunks.chunk_index,
+    chunks.content,
+    chunks.character_count,
+    chunks.created_at,
+    (1 - (chunks.embedding <=> query_embedding))::real as similarity
+  from public.document_chunks as chunks
+  join public.documents as documents
+    on documents.id = chunks.document_id
+  where chunks.user_id = auth.uid()
+    and chunks.embedding is not null
+  order by chunks.embedding <=> query_embedding
   limit greatest(coalesce(match_count, 8), 1);
 $$;

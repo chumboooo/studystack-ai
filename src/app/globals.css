@@ -32,6 +32,18 @@ select {
   font: inherit;
 }
 
+select,
+option,
+optgroup {
+  color-scheme: dark;
+}
+
+option,
+optgroup {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
 ::selection {
   background: rgba(103, 232, 249, 0.3);
   color: white;
