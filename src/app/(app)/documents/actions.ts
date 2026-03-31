@@ -4,10 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   DEFAULT_DOCUMENTS_BUCKET,
-  formatDocumentProcessingError,
-  getDocumentTitleFromFileName,
   runDocumentExtraction,
-  sanitizeDocumentFileName,
 } from "@/lib/documents/processing";
 import { createClient } from "@/lib/supabase/server";
 
@@ -171,98 +168,6 @@ async function updateStoredDocumentTitle({
     buildScopedRedirect(redirectTo, {
       message: `Document renamed to "${normalizedTitle}".`,
     }),
-  );
-}
-
-export async function uploadDocument(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/sign-in");
-  }
-
-  const title = String(formData.get("title") ?? "").trim();
-  const fileEntry = formData.get("file");
-
-  if (!(fileEntry instanceof File) || fileEntry.size === 0) {
-    redirect(
-      buildRedirect({
-        error: "Please choose a PDF file to upload.",
-      }),
-    );
-  }
-
-  const isPdf =
-    fileEntry.type === "application/pdf" || fileEntry.name.toLowerCase().endsWith(".pdf");
-
-  if (!isPdf) {
-    redirect(
-      buildRedirect({
-        error: "Only PDF uploads are supported right now.",
-      }),
-    );
-  }
-
-  const bucket = process.env.SUPABASE_DOCUMENTS_BUCKET || DEFAULT_DOCUMENTS_BUCKET;
-  const safeFileName = sanitizeDocumentFileName(fileEntry.name);
-  const filePath = `${user.id}/${crypto.randomUUID()}-${safeFileName}`;
-  const documentTitle = title || getDocumentTitleFromFileName(fileEntry.name);
-
-  const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, fileEntry, {
-    contentType: "application/pdf",
-    upsert: false,
-  });
-
-  if (uploadError) {
-    redirect(
-      buildRedirect({
-        error: uploadError.message,
-      }),
-    );
-  }
-
-  const { data: document, error: insertError } = await supabase
-    .from("documents")
-    .insert({
-      user_id: user.id,
-      title: documentTitle,
-      file_name: fileEntry.name,
-      file_path: filePath,
-      file_size: fileEntry.size,
-      mime_type: "application/pdf",
-    })
-    .select("id")
-    .single();
-
-  if (insertError) {
-    await supabase.storage.from(bucket).remove([filePath]);
-
-    redirect(
-      buildRedirect({
-        error: insertError.message,
-      }),
-    );
-  }
-
-  const result = await runDocumentExtraction({
-    supabase,
-    userId: user.id,
-    documentId: document.id,
-    sourceBuffer: await fileEntry.arrayBuffer(),
-  });
-
-  revalidatePath("/documents");
-  redirect(
-    result.ok
-      ? buildRedirect({
-          message: result.message,
-        })
-      : buildRedirect({
-          error: `PDF uploaded, but text extraction failed for this document. ${result.message}`,
-        }),
   );
 }
 

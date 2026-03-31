@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { AlertBanner } from "@/components/ui/alert-banner";
@@ -25,109 +25,114 @@ export function UploadDocumentForm({
   const [isPending, startTransition] = useTransition();
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = () => {
+    const fileEntry = fileInputRef.current?.files?.[0];
+    const title = titleInputRef.current?.value.trim() ?? "";
+
+    if (!(fileEntry instanceof File) || fileEntry.size === 0) {
+      setErrorMessage("Please choose a PDF file to upload.");
+      setStatusMessage(null);
+      return;
+    }
+
+    const isPdf =
+      fileEntry.type === "application/pdf" || fileEntry.name.toLowerCase().endsWith(".pdf");
+
+    if (!isPdf) {
+      setErrorMessage("Only PDF uploads are supported right now.");
+      setStatusMessage(null);
+      return;
+    }
+
+    startTransition(async () => {
+      setErrorMessage(null);
+      setStatusMessage("Uploading your PDF...");
+
+      const supabase = createClient();
+      const safeFileName = sanitizeFileName(fileEntry.name);
+      const filePath = `${userId}/${crypto.randomUUID()}-${safeFileName}`;
+      const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, fileEntry, {
+        contentType: "application/pdf",
+        upsert: false,
+      });
+
+      if (uploadError) {
+        setStatusMessage(null);
+        setErrorMessage(
+          uploadError.message.includes("maximum allowed size")
+            ? "This PDF is larger than the current upload limit for your storage bucket."
+            : uploadError.message,
+        );
+        return;
+      }
+
+      setStatusMessage("Preparing your document...");
+
+      try {
+        const response = await fetch("/api/documents/upload", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title,
+            fileName: fileEntry.name,
+            filePath,
+            fileSize: fileEntry.size,
+            mimeType: fileEntry.type || "application/pdf",
+          }),
+        });
+
+        const result = (await response.json()) as {
+          ok?: boolean;
+          error?: string;
+          message?: string;
+        };
+
+        if (!response.ok || result.ok === false) {
+          setStatusMessage(null);
+          setErrorMessage(result.error ?? "The uploaded PDF could not be processed.");
+          router.push(
+            buildDocumentsUrl({
+              error: result.error ?? "The uploaded PDF could not be processed.",
+            }),
+          );
+          router.refresh();
+          return;
+        }
+
+        if (titleInputRef.current) {
+          titleInputRef.current.value = "";
+        }
+
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+
+        setStatusMessage(null);
+        setErrorMessage(null);
+        router.push(
+          buildDocumentsUrl({
+            message: result.message ?? "PDF uploaded successfully.",
+          }),
+        );
+        router.refresh();
+      } catch (error) {
+        setStatusMessage(null);
+        setErrorMessage(error instanceof Error ? error.message : String(error));
+      }
+    });
+  };
 
   return (
-    <form
-      className="space-y-5"
-      onSubmit={(event) => {
-        event.preventDefault();
-
-        const form = event.currentTarget;
-        const formData = new FormData(form);
-        const title = String(formData.get("title") ?? "").trim();
-        const fileEntry = formData.get("file");
-
-        if (!(fileEntry instanceof File) || fileEntry.size === 0) {
-          setErrorMessage("Please choose a PDF file to upload.");
-          setStatusMessage(null);
-          return;
-        }
-
-        const isPdf =
-          fileEntry.type === "application/pdf" || fileEntry.name.toLowerCase().endsWith(".pdf");
-
-        if (!isPdf) {
-          setErrorMessage("Only PDF uploads are supported right now.");
-          setStatusMessage(null);
-          return;
-        }
-
-        startTransition(async () => {
-          setErrorMessage(null);
-          setStatusMessage("Uploading your PDF...");
-
-          const supabase = createClient();
-          const safeFileName = sanitizeFileName(fileEntry.name);
-          const filePath = `${userId}/${crypto.randomUUID()}-${safeFileName}`;
-          const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, fileEntry, {
-            contentType: "application/pdf",
-            upsert: false,
-          });
-
-          if (uploadError) {
-            setStatusMessage(null);
-            setErrorMessage(
-              uploadError.message.includes("maximum allowed size")
-                ? "This PDF is larger than the current upload limit for your storage bucket."
-                : uploadError.message,
-            );
-            return;
-          }
-
-          setStatusMessage("Preparing your document...");
-
-          try {
-            const response = await fetch("/api/documents/upload", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                title,
-                fileName: fileEntry.name,
-                filePath,
-                fileSize: fileEntry.size,
-                mimeType: fileEntry.type || "application/pdf",
-              }),
-            });
-
-            const result = (await response.json()) as {
-              ok?: boolean;
-              error?: string;
-              message?: string;
-            };
-
-            if (!response.ok || result.ok === false) {
-              setStatusMessage(null);
-              setErrorMessage(result.error ?? "The uploaded PDF could not be processed.");
-              router.push(
-                buildDocumentsUrl({
-                  error: result.error ?? "The uploaded PDF could not be processed.",
-                }),
-              );
-              router.refresh();
-              return;
-            }
-
-            form.reset();
-            setStatusMessage(null);
-            setErrorMessage(null);
-            router.push(
-              buildDocumentsUrl({
-                message: result.message ?? "PDF uploaded successfully.",
-              }),
-            );
-            router.refresh();
-          } catch (error) {
-            setStatusMessage(null);
-            setErrorMessage(error instanceof Error ? error.message : String(error));
-          }
-        });
-      }}
-    >
+    <div className="space-y-5">
       <label className="block space-y-2">
         <span className="text-sm font-medium text-slate-200">Title</span>
         <input
+          ref={titleInputRef}
           name="title"
           type="text"
           placeholder="Biology Chapter 3 Notes"
@@ -141,6 +146,7 @@ export function UploadDocumentForm({
       <label className="block space-y-2">
         <span className="text-sm font-medium text-slate-200">PDF file</span>
         <input
+          ref={fileInputRef}
           name="file"
           type="file"
           accept="application/pdf,.pdf"
@@ -157,10 +163,10 @@ export function UploadDocumentForm({
       {errorMessage ? <AlertBanner tone="error">{errorMessage}</AlertBanner> : null}
 
       <div className="flex justify-end">
-        <Button type="submit" disabled={isPending} aria-disabled={isPending}>
+        <Button type="button" disabled={isPending} aria-disabled={isPending} onClick={handleUpload}>
           {isPending ? "Uploading..." : "Upload PDF"}
         </Button>
       </div>
-    </form>
+    </div>
   );
 }
