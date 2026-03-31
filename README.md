@@ -1,27 +1,32 @@
 # StudyStack AI
 
-StudyStack AI is a full-stack study assistant that turns user-uploaded PDFs into grounded Q&A, flashcards, and quizzes with citation-backed answers and secure document workflows.
+StudyStack AI is a full-stack AI study assistant that turns private PDFs into searchable study material, grounded answers with citations, flashcards, and quizzes.
+
+## Live Demo
+
+- Production app: [https://studystack-aii.vercel.app/](https://studystack-aii.vercel.app/)
 
 ## Overview
 
-StudyStack AI helps students and knowledge workers turn static study material into interactive learning tools. Users can upload PDFs, extract and structure the content, ask grounded questions against their own documents, and generate reusable study assets such as flashcards and quizzes.
+StudyStack AI is built for students and self-learners who want to study from their own material instead of relying on generic AI responses. Users upload PDFs, the app prepares the content for search and retrieval, and then generates answers and study tools that stay tied to the original source material.
 
-The app is built for people who want a more reliable way to study from their own material instead of relying on generic AI answers. The core value is grounded retrieval: answers and generated study tools are based on the user’s uploaded documents, with traceable source references and jump-to-chunk navigation.
+The core product value is grounded study support. Questions, flashcards, and quizzes are generated from user-owned document sections rather than from broad, unverified model recall. The result is a more reviewable study workflow with clear citations and source navigation.
 
 ## Core Features
 
-- Secure Supabase authentication for sign up, sign in, route protection, and sign out
+- Secure Supabase authentication with protected app routes
 - Private PDF upload to Supabase Storage
-- Server-side PDF text extraction
-- Structured chunking pipeline for downstream retrieval
+- Direct browser-to-storage upload flow for larger study documents
+- Server-side PDF text extraction in a Next.js runtime
+- Document sectioning and embedding generation for retrieval
 - Hybrid retrieval using semantic search plus keyword/full-text search
 - Grounded Q&A with source citations
 - Saved Q&A history per user
-- Citation links that jump directly to the cited chunk on the document detail page
-- Flashcard generation from grounded chunks
-- Quiz generation from grounded chunks
+- Source links that jump directly to the cited document section
+- Flashcard generation from source-backed document sections
+- Quiz generation from source-backed document sections
 - Secure PDF preview and download for private files
-- Document reprocess and delete flows
+- Document reprocess, rename, and delete flows
 
 ## Tech Stack
 
@@ -37,27 +42,27 @@ The app is built for people who want a more reliable way to study from their own
 
 ## How It Works
 
-1. A signed-in user uploads a PDF.
-2. The file is stored in a private Supabase Storage bucket.
-3. The server extracts raw text from the PDF.
-4. The extracted text is split into retrieval-friendly chunks.
-5. Embeddings are generated for each chunk and stored in Postgres.
-6. For chat questions, the app retrieves relevant chunks using hybrid retrieval.
-7. The answer model receives only the top grounded chunks, not the whole document.
-8. The UI shows the answer with source references and jump-to-chunk links.
-9. Flashcards and quizzes are generated from grounded chunks, not from raw full-document dumps.
+1. A signed-in user uploads a PDF from the browser directly to a private Supabase Storage bucket.
+2. The app creates a document record and downloads the stored PDF server-side for processing.
+3. PDF text is extracted on the server.
+4. The extracted content is split into retrieval-friendly document sections.
+5. Embeddings are generated once per section and stored in Postgres.
+6. For chat questions, the app retrieves relevant sections using hybrid retrieval.
+7. The answer model receives only a small set of top source sections, not the full document.
+8. The UI shows the answer with citations and direct source links.
+9. Flashcards and quizzes are generated from retrieved source sections, not from full-document dumps.
 
 ## Architecture
 
-At a high level, the app is organized around a document-processing pipeline plus grounded retrieval and study-tool generation.
+StudyStack AI is organized around three layers: document ingestion, retrieval, and grounded study tools.
 
-**Storage and data**
+### Data and Storage
 
-- PDFs are stored in a private Supabase Storage bucket.
+- Private PDFs are stored in a Supabase Storage bucket.
 - Document metadata lives in `public.documents`.
-- Extraction state and raw text live in `public.document_contents`.
-- Retrieval chunks and embeddings live in `public.document_chunks`.
-- Saved grounded chat history lives in:
+- Extraction state and extracted text live in `public.document_contents`.
+- Retrieval sections and embeddings live in `public.document_chunks`.
+- Saved chat history lives in:
   - `public.chat_sessions`
   - `public.chat_turns`
   - `public.chat_turn_sources`
@@ -67,11 +72,19 @@ At a high level, the app is organized around a document-processing pipeline plus
   - `public.quiz_sets`
   - `public.quiz_questions`
 
-**Retrieval flow**
+### Retrieval Flow
 
-- Keyword/full-text retrieval uses a Postgres function over chunk content.
-- Semantic retrieval uses pgvector over stored chunk embeddings.
-- The app merges, reranks, and filters candidates before passing a small grounded context to the model.
+- Postgres full-text and keyword search provide lexical candidates.
+- pgvector similarity search provides semantic candidates.
+- The app merges and reranks candidates before sending a small grounded context to the answer or study-tool generator.
+
+## Engineering Highlights
+
+- End-to-end full-stack product architecture across auth, storage, database, UI, and deployment
+- Secure user-scoped data handling with Supabase RLS and private storage access
+- Direct-to-storage upload architecture that avoids server request-size bottlenecks for larger PDFs
+- Retrieval engineering with hybrid search, reranking, and source-aware grounding
+- Practical AI product constraints such as cost control, saved outputs, reviewable citations, and server-only model usage
 
 ## Local Setup
 
@@ -82,49 +95,22 @@ At a high level, the app is organized around a document-processing pipeline plus
 - A Supabase project
 - An OpenAI API key
 
-### Install dependencies
+### Install Dependencies
 
 ```bash
 npm install
 ```
 
-### Environment variables
+### Environment Variables
 
-Create a `.env.local` file and populate it using the values documented in [`.env.example`](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/.env.example).
+Create `.env.local` from [`.env.example`](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/.env.example).
 
-### Supabase setup
-
-Run the SQL files in Supabase SQL Editor in this order:
-
-1. [supabase/documents.sql](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/supabase/documents.sql)
-2. [supabase/storage.sql](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/supabase/storage.sql)
-3. [supabase/document_text.sql](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/supabase/document_text.sql)
-4. [supabase/chat_history.sql](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/supabase/chat_history.sql)
-5. [supabase/study_tools.sql](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/supabase/study_tools.sql)
-
-Supabase requirements:
-
-- Enable Email auth
-- Configure the site URL and auth callback URLs
-- Create the private `documents` bucket
-- Ensure `pgvector` is available so semantic retrieval can run
-
-### Run locally
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000).
-
-## Environment Variables
-
-The project uses the following environment variables:
+Required variables:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
-NEXT_PUBLIC_SITE_URL=
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 SUPABASE_DOCUMENTS_BUCKET=documents
 
 OPENAI_API_KEY=
@@ -135,26 +121,57 @@ OPENAI_EMBEDDING_DIMENSIONS=1536
 
 Notes:
 
-- `OPENAI_API_KEY` is server-only and should never be exposed as a `NEXT_PUBLIC_` variable.
-- `SUPABASE_DOCUMENTS_BUCKET` should match the private bucket configured in Supabase.
+- `OPENAI_API_KEY` is server-only and must not be exposed as a `NEXT_PUBLIC_` variable.
+- `SUPABASE_DOCUMENTS_BUCKET` must match the private bucket configured in Supabase.
 - `OPENAI_MODEL` is used for grounded answers, flashcards, and quizzes.
-- `OPENAI_EMBEDDING_MODEL` and `OPENAI_EMBEDDING_DIMENSIONS` are used for chunk embeddings and semantic retrieval.
-- `NEXT_PUBLIC_SITE_URL` should be set to your deployed app URL in production. If it is missing, the app falls back to Vercel/system request URLs, but setting it explicitly is recommended.
+- `OPENAI_EMBEDDING_MODEL` and `OPENAI_EMBEDDING_DIMENSIONS` are used for document section embeddings.
+- `NEXT_PUBLIC_SITE_URL` should be your deployed app URL in production.
+
+### Supabase Setup
+
+Run the SQL files in Supabase SQL Editor in this order:
+
+1. [documents.sql](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/supabase/documents.sql)
+2. [storage.sql](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/supabase/storage.sql)
+3. [document_text.sql](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/supabase/document_text.sql)
+4. [chat_history.sql](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/supabase/chat_history.sql)
+5. [study_tools.sql](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/supabase/study_tools.sql)
+
+Supabase requirements:
+
+- Enable Email auth
+- Configure the site URL and auth callback URLs
+- Keep the `documents` bucket private
+- Ensure `pgvector` is available for semantic retrieval
+
+### Run Locally
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+### Developer Commands
+
+```bash
+npm run dev
+npm run build
+npm run lint
+```
 
 ## Deployment
 
-### Deploy to Vercel
+### Vercel
 
 1. Push the repository to GitHub.
 2. Import the project into Vercel.
 3. Add the required environment variables in Vercel Project Settings.
 4. Deploy.
 5. Update Supabase Auth URL settings to match the deployed domain.
-6. Redeploy after any env var changes.
+6. Redeploy after env var changes.
 
-### Required Vercel configuration
-
-Set these environment variables in Vercel:
+Required Vercel environment variables:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
@@ -165,98 +182,94 @@ Set these environment variables in Vercel:
 - `OPENAI_EMBEDDING_MODEL`
 - `OPENAI_EMBEDDING_DIMENSIONS`
 
-Recommended values:
+Recommended production values:
 
-- `NEXT_PUBLIC_SITE_URL=https://your-production-domain.com`
+- `NEXT_PUBLIC_SITE_URL=https://studystack-aii.vercel.app`
 - `SUPABASE_DOCUMENTS_BUCKET=documents`
 - `OPENAI_MODEL=gpt-5-mini`
 - `OPENAI_EMBEDDING_MODEL=text-embedding-3-small`
 - `OPENAI_EMBEDDING_DIMENSIONS=1536`
 
-### Supabase Auth URL configuration
+### Supabase Auth URL Configuration
 
 In Supabase Authentication URL settings, configure:
 
 - Site URL:
-  `https://your-production-domain.com`
+  `https://studystack-aii.vercel.app`
 - Redirect URLs:
   `http://localhost:3000/auth/callback`
-  `https://your-production-domain.com/auth/callback`
+  `https://studystack-aii.vercel.app/auth/callback`
 
-If you use Vercel preview deployments and want email auth to work there too, add preview callback URLs that match your preview domain pattern.
+If preview deployments need auth support, add the corresponding preview callback URLs as well.
 
-### Storage and secure file access
+### Storage Notes
 
 - Keep the documents bucket private.
-- PDF preview and download use a server-side route that checks the signed-in user before downloading from Supabase Storage.
-- No public file URLs are required for production preview/download.
+- The documented bucket setup in [storage.sql](/C:/Users/sebas/OneDrive/Desktop/studystack-ai/supabase/storage.sql) uses:
+  - PDF-only MIME restrictions
+  - per-user path-based access policies
+  - a 50 MB file size limit
+- PDF preview and download are served through an authenticated server route, not public file URLs.
 
 ## Usage
 
-### Upload documents
+### Upload Documents
 
 - Sign in or create an account
 - Open the documents page
 - Upload a PDF
-- Wait for extraction, chunking, and embedding generation to complete
+- Wait for processing to complete
 
-### Ask grounded questions
+### Ask Grounded Questions
 
 - Open the chat page
 - Ask a natural-language question about your uploaded material
-- Review the answer and inspect the source citations
-- Jump directly to the cited chunk from the answer history
+- Review the answer and its cited sources
+- Open the cited document section directly from the answer
 
-### Generate flashcards and quizzes
+### Generate Flashcards and Quizzes
 
 - Open the flashcards or quizzes page
-- Choose a specific document or retrieval across all documents
-- Enter a topic prompt and desired item count
-- Generate grounded study material from your own chunks
+- Choose a specific document or all uploaded documents
+- Enter a topic and item count
+- Generate study material backed by your own uploaded sources
 
-## Screenshots / Demo
+## Screenshots and Demo Assets
+
+Add screenshots to this section when you are ready to polish the GitHub presentation further.
 
 ### Landing Page
 
-_Add screenshot here_
+Suggested screenshot: hero section and primary value proposition
 
-### Documents Workspace
+### Documents Page
 
-_Add screenshot here_
+Suggested screenshot: upload panel, document list, and status cards
 
-### Grounded Chat With Citations
+### Chat With Sources
 
-_Add screenshot here_
+Suggested screenshot: saved Q&A, grounded answer, and cited source cards
 
 ### Flashcards
 
-_Add screenshot here_
+Suggested screenshot: generated card set with reveal interaction and source link
 
 ### Quizzes
 
-_Add screenshot here_
+Suggested screenshot: quiz runner, score state, and explanation review
 
-## Why This Project Is Strong
+## Why This Project Matters
 
-StudyStack AI demonstrates a realistic full-stack AI product, not just a model wrapper. It combines authenticated product flows, private file handling, structured document processing, retrieval engineering, grounded generation, persistence, and production-style UI organization in a single application.
-
-From an engineering perspective, it shows:
-
-- end-to-end product architecture
-- secure user-scoped data handling
-- document ingestion and transformation pipelines
-- hybrid retrieval design
-- grounded AI application patterns
-- practical tradeoffs around cost control, persistence, and reviewability
+StudyStack AI is a strong portfolio project because it demonstrates more than model integration. It shows how to build a complete product around AI workflows: secure auth, private file handling, document processing, retrieval design, grounded generation, persistence, and production-style UI delivery in one system.
 
 ## Future Improvements
 
-- richer document parsing for more complex PDF layouts
-- better study-set customization controls
-- stronger retrieval evaluation and tracing
-- spaced repetition and progress tracking
-- collaborative or shared study spaces
+- Richer parsing for more complex or scanned PDFs
+- Better study-set customization and filtering controls
+- Retrieval evaluation and tracing
+- Spaced repetition and progress tracking
+- Collaborative study spaces
 
 ## License
 
-License information can be added here.
+Add a license here if you want the repository to be explicitly open source.
