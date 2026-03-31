@@ -22,7 +22,7 @@ function buildQuestionTitle(question: string) {
   return `${trimmed.slice(0, 69)}...`;
 }
 
-export async function submitGroundedQuestion(formData: FormData) {
+async function requireChatUser() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -31,6 +31,12 @@ export async function submitGroundedQuestion(formData: FormData) {
   if (!user) {
     redirect("/sign-in");
   }
+
+  return { supabase, user };
+}
+
+export async function submitGroundedQuestion(formData: FormData) {
+  const { supabase, user } = await requireChatUser();
 
   const question = String(formData.get("question") ?? "").trim();
   const sessionId = String(formData.get("sessionId") ?? "").trim();
@@ -101,7 +107,7 @@ export async function submitGroundedQuestion(formData: FormData) {
   }
 
   const noSourceAnswer =
-    "StudyStack could not find useful source chunks for that question, so it did not generate a grounded answer.";
+    "StudyStack could not find a strong source in your materials for that question, so it did not generate an answer.";
   const answerResult =
     retrievedChunks.length > 0
       ? await generateGroundedAnswer({
@@ -186,10 +192,183 @@ export async function submitGroundedQuestion(formData: FormData) {
       turn: turn.id,
       message:
         retrievedChunks.length === 0
-          ? "Question saved with a no-sources result."
+          ? "Question saved without an answer because no strong source was found."
           : answerResult?.ok
-            ? "Grounded answer saved."
-            : "Question saved, but answer generation failed.",
+            ? "Answer saved."
+            : "Question saved, but the answer could not be completed.",
+    }),
+  );
+}
+
+export async function deleteChatSession(formData: FormData) {
+  const { supabase, user } = await requireChatUser();
+
+  const sessionId = String(formData.get("sessionId") ?? "").trim();
+  const returnSessionId = String(formData.get("returnSessionId") ?? "").trim();
+  const returnTurnId = String(formData.get("returnTurnId") ?? "").trim();
+
+  if (!sessionId) {
+    redirect(
+      buildChatRedirect({
+        error: "Choose a conversation to delete.",
+        ...(returnSessionId ? { session: returnSessionId } : {}),
+        ...(returnTurnId ? { turn: returnTurnId } : {}),
+      }),
+    );
+  }
+
+  const { data: existingSession, error: sessionError } = await supabase
+    .from("chat_sessions")
+    .select("id")
+    .eq("id", sessionId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (sessionError || !existingSession) {
+    redirect(
+      buildChatRedirect({
+        error: "That conversation could not be found for this account.",
+        ...(returnSessionId ? { session: returnSessionId } : {}),
+        ...(returnTurnId ? { turn: returnTurnId } : {}),
+      }),
+    );
+  }
+
+  const { error: deleteError } = await supabase
+    .from("chat_sessions")
+    .delete()
+    .eq("id", sessionId)
+    .eq("user_id", user.id);
+
+  if (deleteError) {
+    redirect(
+      buildChatRedirect({
+        error: deleteError.message,
+        ...(returnSessionId && returnSessionId !== sessionId ? { session: returnSessionId } : {}),
+        ...(returnTurnId && returnSessionId !== sessionId ? { turn: returnTurnId } : {}),
+      }),
+    );
+  }
+
+  revalidatePath("/chat");
+
+  const shouldResetView = !returnSessionId || returnSessionId === sessionId;
+
+  redirect(
+    buildChatRedirect({
+      message: "Conversation deleted.",
+      ...(shouldResetView ? {} : { session: returnSessionId }),
+      ...(shouldResetView || !returnTurnId ? {} : { turn: returnTurnId }),
+    }),
+  );
+}
+
+export async function deleteChatTurn(formData: FormData) {
+  const { supabase, user } = await requireChatUser();
+
+  const turnId = String(formData.get("turnId") ?? "").trim();
+  const returnSessionId = String(formData.get("returnSessionId") ?? "").trim();
+  const returnTurnId = String(formData.get("returnTurnId") ?? "").trim();
+
+  if (!turnId) {
+    redirect(
+      buildChatRedirect({
+        error: "Choose a saved question to delete.",
+        ...(returnSessionId ? { session: returnSessionId } : {}),
+        ...(returnTurnId ? { turn: returnTurnId } : {}),
+      }),
+    );
+  }
+
+  const { data: existingTurn, error: turnLookupError } = await supabase
+    .from("chat_turns")
+    .select("id, session_id")
+    .eq("id", turnId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (turnLookupError || !existingTurn) {
+    redirect(
+      buildChatRedirect({
+        error: "That saved question could not be found for this account.",
+        ...(returnSessionId ? { session: returnSessionId } : {}),
+        ...(returnTurnId ? { turn: returnTurnId } : {}),
+      }),
+    );
+  }
+
+  const deletedSessionId = existingTurn.session_id;
+
+  const { error: deleteError } = await supabase
+    .from("chat_turns")
+    .delete()
+    .eq("id", turnId)
+    .eq("user_id", user.id);
+
+  if (deleteError) {
+    redirect(
+      buildChatRedirect({
+        error: deleteError.message,
+        ...(returnSessionId ? { session: returnSessionId } : {}),
+        ...(returnTurnId ? { turn: returnTurnId } : {}),
+      }),
+    );
+  }
+
+  const { count: remainingTurnCount } = await supabase
+    .from("chat_turns")
+    .select("*", { count: "exact", head: true })
+    .eq("session_id", deletedSessionId)
+    .eq("user_id", user.id);
+
+  if ((remainingTurnCount ?? 0) === 0) {
+    await supabase
+      .from("chat_sessions")
+      .delete()
+      .eq("id", deletedSessionId)
+      .eq("user_id", user.id);
+  }
+
+  revalidatePath("/chat");
+
+  const deletedCurrentTurn = returnTurnId === turnId;
+  const deletedCurrentSession = !returnSessionId || returnSessionId === deletedSessionId;
+
+  if (!deletedCurrentTurn) {
+    redirect(
+      buildChatRedirect({
+        message: "Saved question deleted.",
+        ...(returnSessionId ? { session: returnSessionId } : {}),
+        ...(returnTurnId ? { turn: returnTurnId } : {}),
+      }),
+    );
+  }
+
+  const { data: replacementTurn } =
+    deletedCurrentSession && (remainingTurnCount ?? 0) > 0
+      ? await supabase
+          .from("chat_turns")
+          .select("id, session_id")
+          .eq("session_id", deletedSessionId)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+
+  if (replacementTurn) {
+    redirect(
+      buildChatRedirect({
+        session: replacementTurn.session_id,
+        turn: replacementTurn.id,
+        message: "Saved question deleted.",
+      }),
+    );
+  }
+
+  redirect(
+    buildChatRedirect({
+      message: "Saved question deleted.",
     }),
   );
 }

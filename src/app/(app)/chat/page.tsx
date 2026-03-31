@@ -1,6 +1,8 @@
-import { submitGroundedQuestion } from "@/app/(app)/chat/actions";
+import { deleteChatSession, deleteChatTurn, submitGroundedQuestion } from "@/app/(app)/chat/actions";
 import { PageHeader } from "@/components/app/page-header";
 import { AskQuestionButton } from "@/components/chat/ask-question-button";
+import { DeleteChatSessionForm } from "@/components/chat/delete-chat-session-button";
+import { DeleteChatTurnForm } from "@/components/chat/delete-chat-turn-button";
 import { Button } from "@/components/ui/button";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
@@ -36,10 +38,10 @@ function getStatusLabel(status: "completed" | "failed" | "no_sources") {
   }
 
   if (status === "failed") {
-    return "Generation failed";
+    return "Could not answer";
   }
 
-  return "No sources";
+  return "No match found";
 }
 
 function getChunkPreview(content: string) {
@@ -50,6 +52,14 @@ function getChunkPreview(content: string) {
   }
 
   return `${normalized.slice(0, 257)}...`;
+}
+
+function formatAnswerForDisplay(content: string) {
+  return content
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
 }
 
 function escapeRegExp(value: string) {
@@ -88,17 +98,20 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   ]);
   const draftQuestion = q?.trim() ?? "";
 
-  const { data: sessions, error: sessionsError } = await supabase
+  const { data: sessionsData, error: sessionsError } = await supabase
     .from("chat_sessions")
     .select("id, title, updated_at")
     .order("updated_at", { ascending: false })
     .limit(10);
 
-  const { data: recentTurns, error: recentTurnsError } = await supabase
+  const { data: recentTurnsData, error: recentTurnsError } = await supabase
     .from("chat_turns")
     .select("id, session_id, question, status, created_at")
     .order("created_at", { ascending: false })
     .limit(12);
+
+  const sessions = sessionsData ?? [];
+  const recentTurns = recentTurnsData ?? [];
 
   let selectedTurn =
     turn && turn.trim().length > 0
@@ -113,9 +126,9 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
 
   const activeSessionId =
     selectedTurn?.session_id ??
-    (session && session.trim().length > 0 ? session : recentTurns?.[0]?.session_id ?? null);
+    (session && session.trim().length > 0 ? session : recentTurns[0]?.session_id ?? null);
 
-  const { data: activeSessionTurns, error: sessionTurnsError } = activeSessionId
+  const { data: activeSessionTurnsData, error: sessionTurnsError } = activeSessionId
     ? await supabase
         .from("chat_turns")
         .select("id, session_id, question, status, created_at")
@@ -123,7 +136,9 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
         .order("created_at", { ascending: false })
     : { data: [], error: null };
 
-  if (!selectedTurn && activeSessionTurns && activeSessionTurns.length > 0) {
+  const activeSessionTurns = activeSessionTurnsData ?? [];
+
+  if (!selectedTurn && activeSessionTurns.length > 0) {
     const latestTurnId = activeSessionTurns[0].id;
     selectedTurn = (
       await supabase
@@ -134,7 +149,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
     ).data;
   }
 
-  const { data: selectedSources, error: selectedSourcesError } = selectedTurn
+  const { data: selectedSourcesData, error: selectedSourcesError } = selectedTurn
     ? await supabase
         .from("chat_turn_sources")
         .select(
@@ -144,16 +159,17 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
         .order("created_at", { ascending: true })
     : { data: [], error: null };
 
-  const activeSession = sessions?.find((entry) => entry.id === activeSessionId) ?? null;
-  const sessionTitleById = new Map((sessions ?? []).map((entry) => [entry.id, entry.title]));
+  const selectedSources = selectedSourcesData ?? [];
+  const activeSession = sessions.find((entry) => entry.id === activeSessionId) ?? null;
+  const sessionTitleById = new Map(sessions.map((entry) => [entry.id, entry.title]));
   const hasDataError = recentTurnsError || sessionTurnsError || selectedSourcesError || sessionsError;
 
   return (
     <div className="space-y-8">
       <PageHeader
-        badge="Search"
-        title="Grounded study chat"
-        description="Ask a question, save the grounded answer, and revisit the exact source chunks that supported it."
+        badge="Ask"
+        title="Study chat"
+        description="Ask questions about your study materials, save the answers, and review the supporting source sections anytime."
         actions={<Button href="/documents">Manage documents</Button>}
       />
 
@@ -161,7 +177,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
       {hasDataError ? (
         <AlertBanner tone="error">
-          Chat history could not be loaded cleanly.{" "}
+          Your chat history could not be loaded right now.{" "}
           {recentTurnsError?.message ||
             sessionTurnsError?.message ||
             selectedSourcesError?.message ||
@@ -173,10 +189,10 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
         <div className="space-y-5">
           <Card className="space-y-5">
             <div>
-              <CardTitle>Ask a grounded question</CardTitle>
+              <CardTitle>Ask a question</CardTitle>
               <CardDescription>
-                Questions are saved per user. StudyStack retrieves only the top matching chunks and
-                stores the grounded answer plus the exact sources that were used.
+                Questions are saved to your account so you can come back to past answers and the
+                source sections they came from.
               </CardDescription>
             </div>
 
@@ -203,14 +219,28 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
 
             {activeSessionTurns.length > 0 ? (
               <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
-                  Current session
-                </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
+                    Current session
+                  </p>
+                  {activeSessionId ? (
+                    <DeleteChatSessionForm
+                      action={deleteChatSession}
+                      sessionId={activeSessionId}
+                      returnSessionId={activeSessionId}
+                      returnTurnId={selectedTurn?.id}
+                      confirmMessage="Delete this conversation and all saved answers in it? This cannot be undone."
+                      label="Delete conversation"
+                      pendingLabel="Deleting..."
+                      className="border border-rose-400/20 bg-rose-400/10 px-4 py-2 text-rose-100 hover:bg-rose-400/20"
+                    />
+                  ) : null}
+                </div>
                 {activeSession ? (
                   <p className="mt-2 text-base font-semibold text-white">{activeSession.title}</p>
                 ) : null}
                 <p className="mt-2 text-sm leading-6 text-slate-300">
-                  Continue this thread to keep related grounded questions together.
+                  Keep related questions together in one conversation.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-400">
                   <span>{activeSessionTurns.length} saved question{activeSessionTurns.length === 1 ? "" : "s"}</span>
@@ -238,7 +268,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
               {[
                 "Explain the difference between mitosis and meiosis.",
                 "What are the outputs of glycolysis?",
-                "Show notes about supply and demand equilibrium.",
+                "How does supply and demand reach equilibrium?",
               ].map((prompt) => (
                 <a
                   key={prompt}
@@ -255,7 +285,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Recent Q&A</CardTitle>
-                <CardDescription>Saved grounded questions for this signed-in account.</CardDescription>
+                <CardDescription>Saved questions and answers for this account.</CardDescription>
               </div>
               <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
                 {recentTurns?.length ?? 0} shown
@@ -265,8 +295,8 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
             {!recentTurns || recentTurns.length === 0 ? (
               <EmptyState
                 eyebrow="No history yet"
-                title="Your grounded chat history will appear here."
-                description="Ask the first grounded question to save the answer and its source references for later review."
+                title="Your saved questions will appear here."
+                description="Ask your first question to save the answer and its sources for later review."
                 actionLabel="Browse documents"
                 actionHref="/documents"
                 secondaryActionLabel="Open dashboard"
@@ -280,34 +310,50 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
             ) : (
               <div className="grid gap-3">
                 {recentTurns.map((historyTurn) => (
-                  <a
+                  <div
                     key={historyTurn.id}
-                    href={`/chat?session=${historyTurn.session_id}&turn=${historyTurn.id}`}
                     className={`rounded-2xl border p-4 transition-colors ${
                       selectedTurn?.id === historyTurn.id
                         ? "border-cyan-300/30 bg-cyan-300/10"
-                        : "border-white/10 bg-white/5 hover:border-cyan-300/20 hover:bg-white/[0.08]"
+                        : "border-white/10 bg-white/5"
                     }`}
                   >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`rounded-full border px-3 py-1 text-xs font-medium ${getStatusTone(historyTurn.status)}`}
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <a
+                        href={`/chat?session=${historyTurn.session_id}&turn=${historyTurn.id}`}
+                        className="min-w-0 flex-1"
                       >
-                        {getStatusLabel(historyTurn.status)}
-                      </span>
-                      {sessionTitleById.get(historyTurn.session_id) ? (
-                        <span className="text-xs uppercase tracking-[0.16em] text-cyan-300">
-                          {sessionTitleById.get(historyTurn.session_id)}
-                        </span>
-                      ) : null}
-                      <span className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                        {formatDocumentDate(historyTurn.created_at)}
-                      </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full border px-3 py-1 text-xs font-medium ${getStatusTone(historyTurn.status)}`}
+                          >
+                            {getStatusLabel(historyTurn.status)}
+                          </span>
+                          {sessionTitleById.get(historyTurn.session_id) ? (
+                            <span className="text-xs uppercase tracking-[0.16em] text-cyan-300">
+                              {sessionTitleById.get(historyTurn.session_id)}
+                            </span>
+                          ) : null}
+                          <span className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                            {formatDocumentDate(historyTurn.created_at)}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm font-medium leading-6 text-white">
+                          {historyTurn.question}
+                        </p>
+                      </a>
+                      <DeleteChatTurnForm
+                        action={deleteChatTurn}
+                        turnId={historyTurn.id}
+                        returnSessionId={selectedTurn?.session_id}
+                        returnTurnId={selectedTurn?.id}
+                        confirmMessage="Delete this saved question and answer? This cannot be undone."
+                        label="Delete"
+                        pendingLabel="Deleting..."
+                        className="border border-rose-400/20 bg-rose-400/10 px-4 py-2 text-rose-100 hover:bg-rose-400/20"
+                      />
                     </div>
-                    <p className="mt-3 text-sm font-medium leading-6 text-white">
-                      {historyTurn.question}
-                    </p>
-                  </a>
+                  </div>
                 ))}
               </div>
             )}
@@ -316,9 +362,9 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
 
         {!selectedTurn ? (
           <EmptyState
-            eyebrow="Grounded answer"
+            eyebrow="Answer"
             title="Choose a saved Q&A or ask a new question."
-            description="When you ask something, StudyStack saves the grounded answer and the source chunks so you can revisit them without paying to regenerate the same result."
+            description="When you ask something, StudyStack saves the answer and its sources so you can revisit it later without running it again."
             actionLabel="Browse documents"
             actionHref="/documents"
             secondaryActionLabel="Open dashboard"
@@ -334,7 +380,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
             <Card className="space-y-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <CardTitle>Grounded answer</CardTitle>
+                  <CardTitle>Answer</CardTitle>
                   <CardDescription>
                     Saved question from <span className="font-medium text-white">{formatDocumentDate(selectedTurn.created_at)}</span>
                   </CardDescription>
@@ -355,7 +401,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
                     Answer
                   </p>
                   <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-100">
-                    {selectedTurn.answer}
+                    {formatAnswerForDisplay(selectedTurn.answer ?? "")}
                   </div>
                 </div>
               ) : selectedTurn.status === "no_sources" ? (
@@ -363,34 +409,33 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
               ) : (
                 <AlertBanner tone="error">
                   {selectedTurn.error_message ||
-                    "This grounded answer could not be generated, but the question was saved."}
+                    "This answer could not be generated, but the question was still saved."}
                 </AlertBanner>
               )}
 
               <AlertBanner tone="info">
-                Saved answers are reopened from history without re-calling the model, which keeps
-                review cheap and predictable.
+                Saved answers reopen from history instantly, so it is easy to review your study sessions later.
               </AlertBanner>
             </Card>
 
             <Card className="space-y-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <CardTitle>Source references</CardTitle>
+                  <CardTitle>Sources</CardTitle>
                   <CardDescription>
-                    Open the cited document and jump directly to the referenced chunk.
+                    Open the supporting document and jump straight to the relevant section.
                   </CardDescription>
                 </div>
                 <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-                  {selectedSources?.length ?? 0} source{selectedSources?.length === 1 ? "" : "s"}
+                  {selectedSources.length} source{selectedSources.length === 1 ? "" : "s"}
                 </div>
               </div>
 
-              {!selectedSources || selectedSources.length === 0 ? (
+              {selectedSources.length === 0 ? (
                 <EmptyState
-                  eyebrow="No citations"
-                  title="No source references were stored for this turn."
-                  description="If the answer failed or no relevant chunks were found, there may not be any citations to review."
+                  eyebrow="No sources"
+                  title="No sources were saved for this answer."
+                  description="If the answer could not be completed or no relevant document sections were found, there may not be any sources to review."
                   actionLabel="Ask another question"
                   actionHref="/chat"
                   secondaryActionLabel="Browse documents"
@@ -420,12 +465,12 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
                                 {source.document_title}
                               </p>
                               <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-cyan-200">
-                                Chunk {source.chunk_index + 1}
+                                Section {source.chunk_index + 1}
                               </span>
                             </div>
                             <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-400">
                               {typeof source.rank === "number" ? (
-                                <span>Rank {source.rank.toFixed(3)}</span>
+                                <span>Match score {source.rank.toFixed(3)}</span>
                               ) : null}
                               <span>Saved with this answer</span>
                             </div>
@@ -442,7 +487,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
                               variant="secondary"
                               className="justify-center"
                             >
-                              Jump to chunk
+                              View source section
                             </Button>
                           ) : (
                             <span className="rounded-full border border-white/10 bg-slate-950/60 px-4 py-2 text-sm text-slate-400">

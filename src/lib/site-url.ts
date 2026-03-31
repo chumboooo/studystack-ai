@@ -5,6 +5,14 @@ export async function getSiteUrl() {
     return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
   }
 
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
+  }
+
   const headerStore = await headers();
   const origin = headerStore.get("origin");
 

@@ -89,7 +89,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
       <PageHeader
         badge="Documents"
         title="Organize your source material"
-        description="Your document library is backed by Supabase Storage and metadata is scoped to the signed-in account."
+        description="Upload, organize, and revisit the study materials tied to your account."
         actions={
           <>
             <Button href="/dashboard" variant="secondary">
@@ -106,8 +106,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
             <div className="space-y-2">
               <CardTitle>Library overview</CardTitle>
               <CardDescription>
-                The first document layer stores PDFs in Supabase Storage and keeps each user&apos;s
-                metadata isolated with row-level security.
+                Keep track of what is ready to study, what is still processing, and what needs attention.
               </CardDescription>
             </div>
 
@@ -120,19 +119,19 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                   <p className="text-sm text-slate-400">Documents in library</p>
                   <p className="mt-2 text-3xl font-semibold text-white">{documentCount}</p>
-                  <p className="mt-2 text-sm text-slate-400">Stored per user in Supabase.</p>
+                  <p className="mt-2 text-sm text-slate-400">Private to your account.</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                   <p className="text-sm text-slate-400">Ready</p>
                   <p className="mt-2 text-2xl font-semibold text-white">{completedCount}</p>
-                  <p className="mt-2 text-sm text-slate-400">Completed extraction.</p>
+                  <p className="mt-2 text-sm text-slate-400">Ready for search and study tools.</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                   <p className="text-sm text-slate-400">Attention</p>
                   <p className="mt-2 text-2xl font-semibold text-white">
                     {failedCount}/{pendingCount}
                   </p>
-                  <p className="mt-2 text-sm text-slate-400">Failed / processing.</p>
+                  <p className="mt-2 text-sm text-slate-400">Need review / still processing.</p>
                 </div>
               </div>
             </div>
@@ -142,9 +141,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
             <div className="space-y-2">
               <CardTitle>Upload a PDF</CardTitle>
               <CardDescription>
-                Uploads are restricted to the current signed-in user. A matching row is created in
-                the `documents` table after the file lands in Storage, then PDF text is extracted
-                into a separate content layer for future chunking and search.
+                Add class notes, slides, or reading packets to your library. StudyStack will prepare them so you can search, review, and build study tools from them.
               </CardDescription>
             </div>
 
@@ -176,7 +173,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                   className="block w-full rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-4 text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-cyan-300 file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-950 hover:file:bg-cyan-200"
                 />
                 <p className="text-xs text-slate-500">
-                  PDF only. The default bucket setup below uses a 10 MB limit.
+                  PDF only. Large files may take a little longer to prepare.
                 </p>
               </label>
 
@@ -201,7 +198,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
           <EmptyState
             eyebrow="No documents yet"
             title="Your document library is ready for the first upload."
-            description="Upload a PDF from the panel on the left to populate your private library, extraction pipeline, document detail pages, and search experience."
+            description="Upload a PDF from the panel on the left to start searching, reviewing, and studying from your own materials."
             actionLabel="Upload a PDF"
             actionHref="/documents"
             secondaryActionLabel="Back to dashboard"
@@ -219,8 +216,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
               <div>
                 <CardTitle>Documents</CardTitle>
                 <CardDescription>
-                  PDFs uploaded to Supabase Storage for the current authenticated user, with
-                  rename, preview, search, and extraction controls.
+                  Your uploaded PDFs, with quick actions to rename, open, download, refresh, and manage them.
                 </CardDescription>
               </div>
               <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
@@ -267,7 +263,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
               <EmptyState
                 eyebrow="No matching documents"
                 title="No documents match the current filters."
-                description="Try a different status or sort to bring documents back into view, or upload another PDF to expand the library."
+                description="Try a different filter or sort setting, or upload another PDF to expand your library."
                 actionLabel="Reset filters"
                 actionHref="/documents"
                 secondaryActionLabel="Upload another PDF"
@@ -307,13 +303,13 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                         <span>{formatFileSize(document.file_size)}</span>
                         <span>{formatDocumentDate(document.created_at)}</span>
                         <span>{document.content?.page_count ?? "?"} pages</span>
-                        <span>{document.content?.chunk_count ?? 0} chunks</span>
+                        <span>{document.content?.chunk_count ?? 0} sections</span>
                       </div>
                       <p className="text-sm leading-7 text-slate-300">
                         {document.content?.extraction_status === "completed"
                           ? "This document is ready to preview, search, and inspect in detail."
                           : document.content?.extraction_status === "failed"
-                            ? "Extraction did not complete. Review the error and reprocess when ready."
+                            ? "This file could not be prepared. Review the error and try again when ready."
                             : "Extraction is still in progress. You can keep working elsewhere and check back later."}
                       </p>
                       {document.content?.extraction_status === "failed" &&
@@ -326,7 +322,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
 
                     <div className="flex flex-col gap-3 xl:items-end">
                       <div className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300 xl:max-w-sm">
-                        <p className="font-medium text-slate-100">Storage path</p>
+                        <p className="font-medium text-slate-100">Saved file path</p>
                         <p className="mt-1 break-all text-slate-400">{document.file_path}</p>
                       </div>
                       <div className="flex w-full flex-col gap-3 sm:flex-row xl:max-w-sm xl:flex-col">

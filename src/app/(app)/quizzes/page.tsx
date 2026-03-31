@@ -73,8 +73,8 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
     <div className="space-y-8">
       <PageHeader
         badge="Quizzes"
-        title="Generate grounded quizzes"
-        description="Create multiple-choice quizzes from your own chunked study material and review explanations against the source."
+        title="Create quizzes"
+        description="Turn your study materials into multiple-choice practice you can review anytime."
         actions={
           <>
             <Button href="/flashcards" variant="secondary">
@@ -94,8 +94,7 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
             <div>
               <CardTitle>Create quiz</CardTitle>
               <CardDescription>
-                Generate a quiz from one document or from retrieval over your own chunks. Only a
-                limited source set is sent to the model to keep generation costs predictable.
+                Create a quiz from one document or from the materials in your library.
               </CardDescription>
             </div>
 
@@ -111,7 +110,7 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
               </label>
 
               <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-200">Topic or retrieval prompt</span>
+                <span className="text-sm font-medium text-slate-200">Topic</span>
                 <input
                   name="topic"
                   type="text"
@@ -130,14 +129,14 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
                   className="h-12 w-full rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none transition-colors focus:border-cyan-300/40"
                   defaultValue=""
                 >
-                  <option value="">Use retrieval across all documents</option>
+                  <option value="">Use all documents</option>
                   {normalizedDocuments
                     .filter((document) => (document.content?.chunk_count ?? 0) > 0)
                     .map((document) => (
                       <option key={document.id} value={document.id}>
                         {document.title}
                       </option>
-                  ))}
+                    ))}
                 </select>
               </label>
 
@@ -152,7 +151,7 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
                   className="h-12 w-full rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/40"
                 />
                 <p className="text-xs text-slate-500">
-                  Choose how many grounded questions to aim for. StudyStack will stop early only if it cannot form more distinct high-quality questions from the current sources.
+                  Choose how many questions to aim for. StudyStack will stop early only if it cannot create more distinct, high-quality questions from the selected material.
                 </p>
               </label>
 
@@ -166,7 +165,7 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Saved quizzes</CardTitle>
-                <CardDescription>Reopen or regenerate grounded quizzes for later review.</CardDescription>
+                <CardDescription>Reopen or refresh saved quizzes for later review.</CardDescription>
               </div>
               <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
                 {sets?.length ?? 0} total
@@ -177,7 +176,7 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
               <EmptyState
                 eyebrow="No quizzes yet"
                 title="Generate your first quiz."
-                description="StudyStack will save quiz questions, explanations, and source references so you can retake them later."
+                description="StudyStack will save your quiz questions, explanations, and sources so you can retake them later."
                 actionLabel="Browse documents"
                 actionHref="/documents"
                 secondaryActionLabel="Open flashcards"
@@ -216,7 +215,7 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
           <EmptyState
             eyebrow="Quiz review"
             title="Choose a saved quiz or generate a new one."
-            description="Generated quizzes stay grounded in your own chunked documents, with explanations and source links available after submission."
+            description="Generated quizzes stay tied to your own study materials, with explanations and source links available after submission."
             actionLabel="Browse documents"
             actionHref="/documents"
             secondaryActionLabel="Open flashcards"
@@ -236,7 +235,7 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
                   <CardTitle>{activeSet.title}</CardTitle>
                   <CardDescription>
                     {normalizedQuestions.length} saved question
-                    {normalizedQuestions.length === 1 ? "" : "s"} grounded in retrieved chunks.
+                    {normalizedQuestions.length === 1 ? "" : "s"} ready to review.
                   </CardDescription>
                 </div>
 

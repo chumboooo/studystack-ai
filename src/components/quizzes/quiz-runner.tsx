@@ -68,7 +68,7 @@ export function QuizRunner({ questions }: { questions: QuizQuestion[] }) {
                 Question {questionIndex + 1}
               </span>
               <span className="rounded-full border border-white/10 bg-slate-950/60 px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-300">
-                Chunk {question.source_chunk_index + 1}
+                Section {question.source_chunk_index + 1}
               </span>
             </div>
 
@@ -119,7 +119,7 @@ export function QuizRunner({ questions }: { questions: QuizQuestion[] }) {
                 <p className="text-sm leading-6 text-slate-300">{question.explanation}</p>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm text-slate-400">
-                    Source: {question.source_document_title}, chunk {question.source_chunk_index + 1}
+                    Source: {question.source_document_title}, section {question.source_chunk_index + 1}
                   </p>
                   {question.source_document_id ? (
                     <Button

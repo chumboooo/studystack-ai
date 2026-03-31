@@ -37,7 +37,7 @@ export function FlashcardView({
                 Card {index + 1}
               </span>
               <span className="rounded-full border border-white/10 bg-slate-950/60 px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-300">
-                Chunk {card.source_chunk_index + 1}
+                Section {card.source_chunk_index + 1}
               </span>
             </div>
 
@@ -77,7 +77,7 @@ export function FlashcardView({
                 <div>
                   <p className="text-sm font-medium text-white">{card.source_document_title}</p>
                   <p className="mt-1 text-sm text-slate-400">
-                    Grounded in chunk {card.source_chunk_index + 1}
+                    From section {card.source_chunk_index + 1}
                   </p>
                 </div>
                 {card.source_document_id ? (

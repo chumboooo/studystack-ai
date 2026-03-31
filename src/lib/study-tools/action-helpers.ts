@@ -61,8 +61,8 @@ export function buildPartialGenerationMessage({
   }
 
   if (tool === "flashcards") {
-    return ` Generated ${actualCount} of ${requestedCount} requested flashcards because only ${actualCount} distinct grounded cards could be formed from the current source material.`;
+    return ` Generated ${actualCount} of ${requestedCount} requested flashcards because only ${actualCount} distinct study cards could be created from the selected material.`;
   }
 
-  return ` Generated ${actualCount} of ${requestedCount} requested quiz questions because only ${actualCount} distinct grounded questions could be formed from the current source material.`;
+  return ` Generated ${actualCount} of ${requestedCount} requested quiz questions because only ${actualCount} distinct questions could be created from the selected material.`;
 }

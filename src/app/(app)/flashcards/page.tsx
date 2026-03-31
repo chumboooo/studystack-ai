@@ -70,8 +70,8 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
     <div className="space-y-8">
       <PageHeader
         badge="Flashcards"
-        title="Generate grounded flashcards"
-        description="Turn retrieved chunks into reusable active-recall cards without sending whole documents to the model."
+        title="Create flashcards"
+        description="Turn your study materials into review cards you can revisit anytime."
         actions={
           <>
             <Button href="/quizzes" variant="secondary">
@@ -91,8 +91,7 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
             <div>
               <CardTitle>Create flashcards</CardTitle>
               <CardDescription>
-                Generate from a chosen document or from retrieval over your own uploaded chunks.
-                Costs stay controlled by sending only a small chunk set to the model.
+                Create cards from one document or from the materials in your library.
               </CardDescription>
             </div>
 
@@ -108,7 +107,7 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
               </label>
 
               <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-200">Topic or retrieval prompt</span>
+                <span className="text-sm font-medium text-slate-200">Topic</span>
                 <input
                   name="topic"
                   type="text"
@@ -127,14 +126,14 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
                   className="h-12 w-full rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none transition-colors focus:border-cyan-300/40"
                   defaultValue=""
                 >
-                  <option value="">Use retrieval across all documents</option>
+                  <option value="">Use all documents</option>
                   {normalizedDocuments
                     .filter((document) => (document.content?.chunk_count ?? 0) > 0)
                     .map((document) => (
                       <option key={document.id} value={document.id}>
                         {document.title}
                       </option>
-                  ))}
+                    ))}
                 </select>
               </label>
 
@@ -149,7 +148,7 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
                   className="h-12 w-full rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/40"
                 />
                 <p className="text-xs text-slate-500">
-                  Choose how many grounded cards to aim for. StudyStack will stop early only if it cannot form more distinct high-quality cards from the current sources.
+                  Choose how many cards to aim for. StudyStack will stop early only if it cannot create more distinct, high-quality cards from the selected material.
                 </p>
               </label>
 
@@ -174,7 +173,7 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
               <EmptyState
                 eyebrow="No flashcards yet"
                 title="Generate your first flashcard set."
-                description="StudyStack will create grounded cards from your own document chunks and save them for later review."
+                description="Create cards from your own study materials and save them for later review."
                 actionLabel="Browse documents"
                 actionHref="/documents"
                 secondaryActionLabel="Open quizzes"
@@ -213,7 +212,7 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
           <EmptyState
             eyebrow="Flashcard review"
             title="Choose a saved set or generate a new one."
-            description="Once cards are generated, you can flip them, review the answer, and jump back to the source chunk they came from."
+            description="Once cards are generated, you can flip them, review the answer, and jump back to the source section they came from."
             actionLabel="Browse documents"
             actionHref="/documents"
             secondaryActionLabel="Open quizzes"
@@ -232,8 +231,7 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
                 <div>
                   <CardTitle>{activeSet.title}</CardTitle>
                   <CardDescription>
-                    {cards.length} flashcards grounded in retrieved chunks. Generated sets are
-                    saved so you can review them without re-calling the model.
+                    {cards.length} saved flashcards. Generated sets stay available so you can come back and review them later.
                   </CardDescription>
                 </div>
                 <div className="flex flex-wrap gap-3">

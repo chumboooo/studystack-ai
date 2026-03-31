@@ -79,7 +79,7 @@ export async function generateGroundedAnswer({
             {
               type: "input_text",
               text:
-                "You answer questions using only the provided source excerpts. If the sources are insufficient, say that clearly. Do not invent facts. Keep answers concise and useful. Cite source labels like [S1] when you make a claim.",
+                "You answer questions using only the provided source excerpts. If the sources are insufficient, say that clearly. Do not invent facts. Keep answers concise and useful. Cite source labels like [S1] when you make a claim. Write in plain text only and do not use Markdown formatting such as **bold**, headings, or code fences.",
             },
           ],
         },

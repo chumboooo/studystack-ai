@@ -90,13 +90,13 @@ export default async function DocumentDetailPage({
       <PageHeader
         badge="Document"
         title={document.title}
-        description="Review metadata, extracted text, and retrieval-ready chunks for this document."
+        description="Review document details, extracted text, and the saved source sections for this file."
         actions={
           <>
             <Button href="/documents" variant="secondary">
               Back to documents
             </Button>
-            <Button href="/chat">Search chunks</Button>
+            <Button href="/chat">Ask questions</Button>
             <Button
               href={buildDocumentFileUrl(document.id, "view")}
               variant="secondary"
@@ -139,7 +139,7 @@ export default async function DocumentDetailPage({
       {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
       {selectedChunkIndex !== null ? (
         <AlertBanner tone="info">
-          Jumped to chunk {selectedChunkIndex + 1}. The selected chunk is highlighted below.
+          Opened section {selectedChunkIndex + 1}. It is highlighted below.
         </AlertBanner>
       ) : null}
 
@@ -149,8 +149,7 @@ export default async function DocumentDetailPage({
             <div className="space-y-2">
               <CardTitle>Document metadata</CardTitle>
               <CardDescription>
-                This view is scoped to the signed-in user and only loads the selected document and
-                its extracted content.
+                Everything on this page belongs to your account and is shown only for this document.
               </CardDescription>
             </div>
 
@@ -205,10 +204,10 @@ export default async function DocumentDetailPage({
                     <DocumentStatusBadge status={content?.extraction_status} />
                     <span className="text-sm text-slate-400">
                       {content?.extraction_status === "completed"
-                        ? "Processed and ready for search."
+                        ? "Ready to use in chat, flashcards, and quizzes."
                         : content?.extraction_status === "failed"
                           ? "Last attempt failed."
-                          : "Waiting for extraction to finish."}
+                          : "Still preparing this file."}
                     </span>
                   </div>
                 </div>
@@ -222,7 +221,7 @@ export default async function DocumentDetailPage({
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <p className="text-sm text-slate-400">Chunk count</p>
+                  <p className="text-sm text-slate-400">Section count</p>
                   <p className="mt-2 text-base font-medium text-white">
                     {content?.chunk_count ?? chunks.length}
                   </p>
@@ -230,7 +229,7 @@ export default async function DocumentDetailPage({
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-5">
-                <p className="text-sm font-medium text-slate-100">Storage path</p>
+                <p className="text-sm font-medium text-slate-100">Saved file path</p>
                 <p className="mt-2 break-all text-sm leading-6 text-slate-400">
                   {document.file_path}
                 </p>
@@ -247,17 +246,17 @@ export default async function DocumentDetailPage({
           {content?.raw_text ? (
             <Card className="space-y-5">
               <div>
-                <CardTitle>Extracted text</CardTitle>
+                <CardTitle>Document text</CardTitle>
                 <CardDescription>
-                  Full raw text stored for this document before future chunk retrieval or model use.
+                  The full readable text captured from this file.
                 </CardDescription>
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
                 <div className="max-h-[34rem] overflow-y-auto rounded-[1.1rem] bg-slate-950/70 p-5">
                   <div className="mb-4 flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-slate-500">
-                    <span>Readable text layer</span>
+                    <span>Readable text</span>
                     <span>{content.page_count ?? "?"} pages</span>
-                    <span>{content.chunk_count ?? chunks.length} chunks</span>
+                    <span>{content.chunk_count ?? chunks.length} sections</span>
                   </div>
                   <pre className="whitespace-pre-wrap text-sm leading-8 text-slate-200">
                     {content.raw_text}
@@ -267,12 +266,12 @@ export default async function DocumentDetailPage({
             </Card>
           ) : (
             <EmptyState
-              eyebrow="Raw text"
-              title="No extracted text is stored yet."
-              description="If extraction has not completed yet, refresh this page later. If extraction failed, the error message above should explain what happened."
+              eyebrow="Document text"
+              title="No document text is available yet."
+              description="If this file is still being prepared, refresh this page later. If preparation failed, the message above should explain what happened."
               actionLabel="Back to documents"
               actionHref="/documents"
-              secondaryActionLabel="Search library"
+              secondaryActionLabel="Ask questions"
               secondaryActionHref="/chat"
               icon={
                 <svg viewBox="0 0 24 24" className="h-6 w-6 fill-none stroke-current stroke-[1.8]">
@@ -287,9 +286,9 @@ export default async function DocumentDetailPage({
         {chunks.length > 0 ? (
           <Card className="space-y-5">
             <div>
-              <CardTitle>Stored chunks</CardTitle>
+              <CardTitle>Source sections</CardTitle>
               <CardDescription>
-                Retrieval-ready chunks stored in order for this document.
+                Saved sections from this document, shown in reading order.
               </CardDescription>
             </div>
 
@@ -308,7 +307,7 @@ export default async function DocumentDetailPage({
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-400">
                         <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
-                          Chunk {chunk.chunk_index + 1}
+                          Section {chunk.chunk_index + 1}
                         </span>
                         <span>{chunk.character_count} chars</span>
                         <span>{formatDocumentDate(chunk.created_at)}</span>
@@ -326,7 +325,7 @@ export default async function DocumentDetailPage({
 
                     <details className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                       <summary className="cursor-pointer text-sm font-medium text-white">
-                        View full chunk content
+                        View full section
                       </summary>
                       <div className="mt-4 border-t border-white/10 pt-4">
                         <pre className="whitespace-pre-wrap text-sm leading-8 text-slate-300">
@@ -341,12 +340,12 @@ export default async function DocumentDetailPage({
           </Card>
         ) : (
           <EmptyState
-            eyebrow="Chunks"
-            title="No stored chunks yet for this document."
-            description="Chunks appear after extraction and chunking complete. If extraction failed or is still pending, the chunk list will remain empty."
+            eyebrow="Source sections"
+            title="No source sections are available yet for this document."
+            description="Sections appear after the file finishes processing. If preparation failed or is still in progress, this list will stay empty for now."
             actionLabel="Back to documents"
             actionHref="/documents"
-            secondaryActionLabel="Search library"
+            secondaryActionLabel="Ask questions"
             secondaryActionHref="/chat"
             icon={
               <svg viewBox="0 0 24 24" className="h-6 w-6 fill-none stroke-current stroke-[1.8]">

@@ -46,7 +46,7 @@ export default async function DashboardPage() {
       <PageHeader
         badge="Overview"
         title="Study dashboard"
-        description="Keep your document pipeline moving, spot extraction issues quickly, and jump back into the next useful task."
+        description="See what is ready to study, what still needs attention, and where to jump in next."
         actions={
           <>
             <Button href="/documents" variant="secondary">
@@ -68,8 +68,8 @@ export default async function DashboardPage() {
         <StatCard
           label="Ready for search"
           value={String(completedDocuments)}
-          change={completedDocuments > 0 ? "Chunks available" : "Nothing indexed yet"}
-          description="Documents with completed extraction and retrieval-ready text."
+          change={completedDocuments > 0 ? "Ready to use" : "Nothing ready yet"}
+          description="Documents that are ready for chat, flashcards, and quizzes."
           tone="success"
         />
         <StatCard
@@ -80,10 +80,10 @@ export default async function DashboardPage() {
           tone={failedDocuments > 0 ? "warning" : "default"}
         />
         <StatCard
-          label="Stored chunks"
+          label="Saved sections"
           value={String(totalChunks)}
-          change={totalChunks > 0 ? "Search ready" : "No chunks yet"}
-          description="Chunk records available for keyword and Postgres retrieval."
+          change={totalChunks > 0 ? "Study-ready content" : "No sections yet"}
+          description="Document sections available to support answers and study tools."
           tone="default"
         />
       </div>
@@ -94,7 +94,7 @@ export default async function DashboardPage() {
             <div>
               <CardTitle>Recent documents</CardTitle>
               <CardDescription>
-                The latest files for {user?.email ?? "this account"}, with extraction readiness at
+                The latest files for {user?.email ?? "this account"}, with readiness at
                 a glance.
               </CardDescription>
             </div>
@@ -108,10 +108,10 @@ export default async function DashboardPage() {
               Dashboard stats could not load: {error.message}
             </AlertBanner>
           ) : recentDocuments.length === 0 ? (
-            <EmptyState
-              eyebrow="Library ready"
-              title="Upload your first study document."
-              description="Once a PDF is uploaded, this dashboard will show extraction progress, recent activity, and quick links into search."
+              <EmptyState
+                eyebrow="Library ready"
+                title="Upload your first study document."
+                description="Once a PDF is uploaded, this dashboard will show progress, recent activity, and quick links back into your study flow."
               actionLabel="Upload a PDF"
               actionHref="/documents"
               secondaryActionLabel="Open search"
@@ -137,7 +137,7 @@ export default async function DashboardPage() {
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-400">
                       <span>{formatDocumentDate(document.created_at)}</span>
-                      <span>{document.content?.chunk_count ?? 0} chunks</span>
+                      <span>{document.content?.chunk_count ?? 0} sections</span>
                     </div>
                     {document.content?.extraction_status === "failed" &&
                     document.content.error_message ? (
@@ -148,7 +148,7 @@ export default async function DashboardPage() {
                       <p className="text-sm leading-6 text-slate-300">
                         {document.content?.extraction_status === "completed"
                           ? "Ready to open, search, and inspect in detail."
-                          : "Still processing or waiting on extraction to finish."}
+                          : "Still preparing this file."}
                       </p>
                     )}
                   </div>
@@ -172,7 +172,7 @@ export default async function DashboardPage() {
             <div>
               <CardTitle>Quick actions</CardTitle>
               <CardDescription>
-                Common routes to keep the product loop moving from upload to retrieval.
+                Common routes to keep your study flow moving.
               </CardDescription>
             </div>
             <div className="grid gap-4">
@@ -183,13 +183,13 @@ export default async function DashboardPage() {
                   href: "/documents",
                 },
                 {
-                  title: "Search chunk results",
-                  detail: "Look across extracted content before AI answers exist.",
+                  title: "Ask study questions",
+                  detail: "Search across the material in your library.",
                   href: "/chat",
                 },
                 {
                   title: "Browse document detail views",
-                  detail: "Inspect raw text, chunking, and extraction status.",
+                  detail: "Review document text, sections, and file details.",
                   href: "/documents",
                 },
               ].map((item) => (
@@ -212,7 +212,7 @@ export default async function DashboardPage() {
             <div>
               <CardTitle>Pipeline health</CardTitle>
               <CardDescription>
-                A quick view of what is already usable and what still needs attention.
+                A quick view of what is ready and what still needs attention.
               </CardDescription>
             </div>
             <div className="grid gap-3">
@@ -222,15 +222,15 @@ export default async function DashboardPage() {
                   value: totalDocuments,
                 },
                 {
-                  label: "Completed extraction",
+                  label: "Ready documents",
                   value: completedDocuments,
                 },
                 {
-                  label: "Failed extraction",
+                  label: "Needs attention",
                   value: failedDocuments,
                 },
                 {
-                  label: "Stored chunks",
+                  label: "Saved sections",
                   value: totalChunks,
                 },
               ].map((item) => (

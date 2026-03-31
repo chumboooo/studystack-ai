@@ -139,6 +139,57 @@ Notes:
 - `SUPABASE_DOCUMENTS_BUCKET` should match the private bucket configured in Supabase.
 - `OPENAI_MODEL` is used for grounded answers, flashcards, and quizzes.
 - `OPENAI_EMBEDDING_MODEL` and `OPENAI_EMBEDDING_DIMENSIONS` are used for chunk embeddings and semantic retrieval.
+- `NEXT_PUBLIC_SITE_URL` should be set to your deployed app URL in production. If it is missing, the app falls back to Vercel/system request URLs, but setting it explicitly is recommended.
+
+## Deployment
+
+### Deploy to Vercel
+
+1. Push the repository to GitHub.
+2. Import the project into Vercel.
+3. Add the required environment variables in Vercel Project Settings.
+4. Deploy.
+5. Update Supabase Auth URL settings to match the deployed domain.
+6. Redeploy after any env var changes.
+
+### Required Vercel configuration
+
+Set these environment variables in Vercel:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `NEXT_PUBLIC_SITE_URL`
+- `SUPABASE_DOCUMENTS_BUCKET`
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`
+- `OPENAI_EMBEDDING_MODEL`
+- `OPENAI_EMBEDDING_DIMENSIONS`
+
+Recommended values:
+
+- `NEXT_PUBLIC_SITE_URL=https://your-production-domain.com`
+- `SUPABASE_DOCUMENTS_BUCKET=documents`
+- `OPENAI_MODEL=gpt-5-mini`
+- `OPENAI_EMBEDDING_MODEL=text-embedding-3-small`
+- `OPENAI_EMBEDDING_DIMENSIONS=1536`
+
+### Supabase Auth URL configuration
+
+In Supabase Authentication URL settings, configure:
+
+- Site URL:
+  `https://your-production-domain.com`
+- Redirect URLs:
+  `http://localhost:3000/auth/callback`
+  `https://your-production-domain.com/auth/callback`
+
+If you use Vercel preview deployments and want email auth to work there too, add preview callback URLs that match your preview domain pattern.
+
+### Storage and secure file access
+
+- Keep the documents bucket private.
+- PDF preview and download use a server-side route that checks the signed-in user before downloading from Supabase Storage.
+- No public file URLs are required for production preview/download.
 
 ## Usage
 
