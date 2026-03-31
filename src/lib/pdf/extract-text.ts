@@ -54,7 +54,6 @@ export async function extractPdfText(fileBuffer: ArrayBuffer): Promise<PdfTextEx
 
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(fileBuffer),
-    disableWorker: true,
     disableFontFace: true,
     isEvalSupported: false,
     useWorkerFetch: false,
