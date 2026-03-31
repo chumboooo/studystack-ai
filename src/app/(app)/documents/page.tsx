@@ -2,14 +2,13 @@ import {
   deleteDocumentFromList,
   renameDocumentFromList,
   reprocessDocumentFromList,
-  uploadDocument,
 } from "@/app/(app)/documents/actions";
 import { DeleteDocumentForm } from "@/components/documents/delete-document-button";
 import { DocumentStatusBadge, getDocumentStatusLabel } from "@/components/documents/document-status-badge";
 import { ReprocessDocumentForm } from "@/components/documents/reprocess-document-button";
 import { DocumentTitleForm } from "@/components/documents/document-title-form";
+import { UploadDocumentForm } from "@/components/documents/upload-document-form";
 import { PageHeader } from "@/components/app/page-header";
-import { UploadSubmitButton } from "@/components/documents/upload-submit-button";
 import { Button } from "@/components/ui/button";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
@@ -34,6 +33,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const uploadBucket = process.env.SUPABASE_DOCUMENTS_BUCKET || "documents";
 
   const { data: documents, error } = await supabase
     .from("documents")
@@ -149,38 +149,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
 
             {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
 
-            <form action={uploadDocument} className="space-y-5">
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-200">Title</span>
-                <input
-                  name="title"
-                  type="text"
-                  placeholder="Biology Chapter 3 Notes"
-                  className="h-12 w-full rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/40"
-                />
-                <p className="text-xs text-slate-500">
-                  Optional. If left blank, the title will be generated from the file name.
-                </p>
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-200">PDF file</span>
-                <input
-                  name="file"
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  required
-                  className="block w-full rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-4 text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-cyan-300 file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-950 hover:file:bg-cyan-200"
-                />
-                <p className="text-xs text-slate-500">
-                  PDF only. Large files may take a little longer to prepare.
-                </p>
-              </label>
-
-              <div className="flex justify-end">
-                <UploadSubmitButton />
-              </div>
-            </form>
+            {user ? <UploadDocumentForm userId={user.id} bucket={uploadBucket} /> : null}
           </Card>
         </div>
 

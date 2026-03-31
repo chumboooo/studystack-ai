@@ -2,12 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { embedTexts, serializeEmbedding } from "@/lib/openai/embeddings";
-import { chunkExtractedText } from "@/lib/pdf/chunk-text";
-import { extractPdfText } from "@/lib/pdf/extract-text";
+import {
+  DEFAULT_DOCUMENTS_BUCKET,
+  formatDocumentProcessingError,
+  getDocumentTitleFromFileName,
+  runDocumentExtraction,
+  sanitizeDocumentFileName,
+} from "@/lib/documents/processing";
 import { createClient } from "@/lib/supabase/server";
-
-const DEFAULT_BUCKET = "documents";
 
 function buildRedirect(params: Record<string, string>) {
   return `/documents?${new URLSearchParams(params).toString()}`;
@@ -16,171 +18,6 @@ function buildRedirect(params: Record<string, string>) {
 function buildScopedRedirect(path: string, params: Record<string, string>) {
   const query = new URLSearchParams(params).toString();
   return query ? `${path}?${query}` : path;
-}
-
-function sanitizeFileName(fileName: string) {
-  return fileName.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-");
-}
-
-function getDocumentTitle(fileName: string) {
-  return fileName.replace(/\.pdf$/i, "").trim();
-}
-
-function formatActionError(error: unknown) {
-  if (error instanceof Error) {
-    return `${error.name}: ${error.message}`;
-  }
-
-  return String(error);
-}
-
-async function runDocumentExtraction({
-  supabase,
-  userId,
-  documentId,
-  sourceBuffer,
-}: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
-  userId: string;
-  documentId: string;
-  sourceBuffer: ArrayBuffer;
-}) {
-  const { error: contentUpsertError } = await supabase
-    .from("document_contents")
-    .upsert({
-      document_id: documentId,
-      user_id: userId,
-      extraction_status: "pending",
-      chunk_count: 0,
-      raw_text: "",
-      page_count: null,
-      extracted_at: null,
-      error_message: null,
-    });
-
-  if (contentUpsertError) {
-    throw contentUpsertError;
-  }
-
-  const { error: deleteChunksError } = await supabase
-    .from("document_chunks")
-    .delete()
-    .eq("document_id", documentId)
-    .eq("user_id", userId);
-
-  if (deleteChunksError) {
-    throw deleteChunksError;
-  }
-
-  try {
-    const extraction = await extractPdfText(sourceBuffer);
-    const chunks = chunkExtractedText(extraction.rawText);
-    let embeddingErrorMessage: string | null = null;
-
-    if (chunks.length > 0) {
-      const { data: insertedChunks, error: chunkInsertError } = await supabase
-        .from("document_chunks")
-        .insert(
-          chunks.map((chunk) => ({
-            document_id: documentId,
-            user_id: userId,
-            chunk_index: chunk.chunkIndex,
-            content: chunk.content,
-            character_count: chunk.characterCount,
-            metadata: {
-              strategy: "paragraph-balanced-v1",
-            },
-          })),
-        )
-        .select("id, chunk_index, content");
-
-      if (chunkInsertError) {
-        throw chunkInsertError;
-      }
-
-      try {
-        const embeddings = await embedTexts(insertedChunks.map((chunk) => chunk.content));
-
-        await Promise.all(
-          insertedChunks.map(async (chunk, index) => {
-            const embedding = embeddings[index];
-
-            if (!embedding || embedding.length === 0) {
-              return;
-            }
-
-            const { error: embeddingUpdateError } = await supabase
-              .from("document_chunks")
-              .update({
-                embedding: serializeEmbedding(embedding),
-                metadata: {
-                  strategy: "paragraph-balanced-v1",
-                  embedding_model: process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small",
-                },
-              })
-              .eq("id", chunk.id)
-              .eq("user_id", userId);
-
-            if (embeddingUpdateError) {
-              throw embeddingUpdateError;
-            }
-          }),
-        );
-      } catch (error) {
-        embeddingErrorMessage = `Embeddings were skipped: ${formatActionError(error)}`;
-      }
-    }
-
-    const { error: extractionUpdateError } = await supabase
-      .from("document_contents")
-      .update({
-        extraction_status: "completed",
-        chunk_count: chunks.length,
-        raw_text: extraction.rawText,
-        page_count: extraction.pageCount,
-        extracted_at: new Date().toISOString(),
-        error_message: embeddingErrorMessage,
-      })
-      .eq("document_id", documentId)
-      .eq("user_id", userId);
-
-    if (extractionUpdateError) {
-      throw extractionUpdateError;
-    }
-
-    return {
-      ok: true as const,
-      message: embeddingErrorMessage
-        ? `PDF processed successfully, but semantic embeddings could not be generated. ${embeddingErrorMessage}`
-        : "PDF processed successfully.",
-    };
-  } catch (error) {
-    const message = formatActionError(error);
-
-    await supabase
-      .from("document_contents")
-      .update({
-        extraction_status: "failed",
-        chunk_count: 0,
-        raw_text: "",
-        page_count: null,
-        extracted_at: null,
-        error_message: message,
-      })
-      .eq("document_id", documentId)
-      .eq("user_id", userId);
-
-    await supabase
-      .from("document_chunks")
-      .delete()
-      .eq("document_id", documentId)
-      .eq("user_id", userId);
-
-    return {
-      ok: false as const,
-      message,
-    };
-  }
 }
 
 async function deleteStoredDocumentFile({
@@ -221,7 +58,7 @@ async function deleteStoredDocumentFile({
     );
   }
 
-  const bucket = process.env.SUPABASE_DOCUMENTS_BUCKET || DEFAULT_BUCKET;
+  const bucket = process.env.SUPABASE_DOCUMENTS_BUCKET || DEFAULT_DOCUMENTS_BUCKET;
   const { error: storageDeleteError } = await supabase.storage.from(bucket).remove([document.file_path]);
 
   if (storageDeleteError) {
@@ -369,10 +206,10 @@ export async function uploadDocument(formData: FormData) {
     );
   }
 
-  const bucket = process.env.SUPABASE_DOCUMENTS_BUCKET || DEFAULT_BUCKET;
-  const safeFileName = sanitizeFileName(fileEntry.name);
+  const bucket = process.env.SUPABASE_DOCUMENTS_BUCKET || DEFAULT_DOCUMENTS_BUCKET;
+  const safeFileName = sanitizeDocumentFileName(fileEntry.name);
   const filePath = `${user.id}/${crypto.randomUUID()}-${safeFileName}`;
-  const documentTitle = title || getDocumentTitle(fileEntry.name);
+  const documentTitle = title || getDocumentTitleFromFileName(fileEntry.name);
 
   const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, fileEntry, {
     contentType: "application/pdf",
@@ -502,7 +339,7 @@ async function reprocessStoredDocument({
     );
   }
 
-  const bucket = process.env.SUPABASE_DOCUMENTS_BUCKET || DEFAULT_BUCKET;
+  const bucket = process.env.SUPABASE_DOCUMENTS_BUCKET || DEFAULT_DOCUMENTS_BUCKET;
   const { data: downloadedFile, error: downloadError } = await supabase.storage
     .from(bucket)
     .download(document.file_path);
