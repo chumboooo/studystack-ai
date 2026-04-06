@@ -234,30 +234,6 @@ If preview deployments need auth support, add the corresponding preview callback
 - Enter a topic and item count
 - Generate study material backed by your own uploaded sources
 
-## Screenshots and Demo Assets
-
-Add screenshots to this section when you are ready to polish the GitHub presentation further.
-
-### Landing Page
-
-Suggested screenshot: hero section and primary value proposition
-
-### Documents Page
-
-Suggested screenshot: upload panel, document list, and status cards
-
-### Chat With Sources
-
-Suggested screenshot: saved Q&A, grounded answer, and cited source cards
-
-### Flashcards
-
-Suggested screenshot: generated card set with reveal interaction and source link
-
-### Quizzes
-
-Suggested screenshot: quiz runner, score state, and explanation review
-
 ## Why This Project Matters
 
 StudyStack AI is a strong portfolio project because it demonstrates more than model integration. It shows how to build a complete product around AI workflows: secure auth, private file handling, document processing, retrieval design, grounded generation, persistence, and production-style UI delivery in one system.
@@ -269,7 +245,3 @@ StudyStack AI is a strong portfolio project because it demonstrates more than mo
 - Retrieval evaluation and tracing
 - Spaced repetition and progress tracking
 - Collaborative study spaces
-
-## License
-
-Add a license here if you want the repository to be explicitly open source.
