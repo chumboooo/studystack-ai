@@ -63,6 +63,7 @@ async function generateAndStoreQuiz({
     questions = await generateQuizFromChunks({
       chunks: source.chunks,
       titleHint: title || source.titleHint,
+      studyTopic: retrievalQuery,
       questionCount: requestedCount,
     });
   } catch (error) {
@@ -152,10 +153,9 @@ async function generateAndStoreQuiz({
   });
 
   redirect(
-    buildStudyToolRedirect("quizzes", {
-      set: targetSetId,
+    `/quizzes/${targetSetId}?${new URLSearchParams({
       message: `${replaceExisting ? "Quiz regenerated." : "Quiz generated."}${partialMessage}`,
-    }),
+    }).toString()}`,
   );
 }
 

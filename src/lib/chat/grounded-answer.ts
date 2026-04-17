@@ -13,6 +13,7 @@ export type RetrievalChunk = {
   character_count: number;
   created_at: string;
   rank: number;
+  metadata?: Record<string, unknown> | null;
 };
 
 type GroundedAnswerResult =

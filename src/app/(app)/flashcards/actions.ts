@@ -63,6 +63,7 @@ async function generateAndStoreFlashcards({
     cards = await generateFlashcardsFromChunks({
       chunks: source.chunks,
       titleHint: title || source.titleHint,
+      studyTopic: retrievalQuery,
       cardCount: requestedCount,
     });
   } catch (error) {
@@ -150,10 +151,9 @@ async function generateAndStoreFlashcards({
   });
 
   redirect(
-    buildStudyToolRedirect("flashcards", {
-      set: targetSetId,
+    `/flashcards/${targetSetId}?${new URLSearchParams({
       message: `${replaceExisting ? "Flashcards regenerated." : "Flashcards generated."}${partialMessage}`,
-    }),
+    }).toString()}`,
   );
 }
 

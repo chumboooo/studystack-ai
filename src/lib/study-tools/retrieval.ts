@@ -6,6 +6,15 @@ import type { createClient } from "@/lib/supabase/server";
 export type StudyChunk = RetrievalChunk;
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+type DocumentChunkRow = {
+  id: string;
+  document_id: string;
+  chunk_index: number;
+  content: string;
+  character_count: number;
+  created_at: string;
+  metadata: Record<string, unknown> | null;
+};
 
 const GENERIC_RETRIEVAL_WORDS = new Set([
   "flashcard",
@@ -34,6 +43,27 @@ function buildQueryCandidates(queryText: string) {
     .trim();
 
   return Array.from(new Set([stripped, normalized].filter(Boolean)));
+}
+
+function mergeContextWindow({
+  chunk,
+  chunkMap,
+}: {
+  chunk: StudyChunk;
+  chunkMap: Map<number, StudyChunk>;
+}) {
+  const windowContent = [chunk.chunk_index - 1, chunk.chunk_index, chunk.chunk_index + 1]
+    .filter((index) => index >= 0)
+    .map((index) => chunkMap.get(index)?.content ?? "")
+    .map((content) => content.trim())
+    .filter(Boolean)
+    .join("\n\n");
+
+  return {
+    ...chunk,
+    content: windowContent || chunk.content,
+    character_count: windowContent.length || chunk.character_count,
+  };
 }
 
 export async function retrieveStudyChunks({
@@ -67,29 +97,54 @@ export async function retrieveStudyChunks({
 
     const { data: chunks, error: chunksError } = await supabase
       .from("document_chunks")
-      .select("id, document_id, chunk_index, content, character_count, created_at")
+      .select("id, document_id, chunk_index, content, character_count, created_at, metadata")
       .eq("document_id", documentId)
       .order("chunk_index", { ascending: true })
-      .limit(Math.max(matchCount * 4, 24));
+      .limit(600);
 
     if (chunksError) {
       throw new Error("StudyStack could not read that document.");
     }
 
+    const studyChunks = ((chunks ?? []) as DocumentChunkRow[]).map((chunk) => ({
+      chunk_id: chunk.id,
+      document_id: chunk.document_id,
+      document_title: document.title,
+      chunk_index: chunk.chunk_index,
+      content: chunk.content,
+      character_count: chunk.character_count,
+      created_at: chunk.created_at,
+      metadata: chunk.metadata,
+      rank: 0,
+    }));
+    const chunkMap = new Map<number, StudyChunk>(studyChunks.map((chunk) => [chunk.chunk_index, chunk]));
+    const candidateMap = new Map<string, StudyChunk>(studyChunks.map((chunk) => [chunk.chunk_id, chunk]));
+
+    if (normalizedQuery) {
+      try {
+        const hybridChunks = await retrieveGroundingChunks({
+          supabase,
+          question: normalizedQuery,
+        });
+
+        for (const chunk of hybridChunks.filter((entry) => entry.document_id === documentId)) {
+          candidateMap.set(chunk.chunk_id, chunk);
+        }
+      } catch {
+        // Full-document local ranking below keeps selected-document generation available.
+      }
+    }
+
     const rankedChunks = selectStudyChunks({
-      chunks: (chunks ?? []).map((chunk) => ({
-        chunk_id: chunk.id,
-        document_id: chunk.document_id,
-        document_title: document.title,
-        chunk_index: chunk.chunk_index,
-        content: chunk.content,
-        character_count: chunk.character_count,
-        created_at: chunk.created_at,
-        rank: 0,
-      })),
+      chunks: Array.from(candidateMap.values()),
       queryText: normalizedQuery || document.title,
-      limit: Math.max(matchCount, 8),
-    });
+      limit: Math.max(matchCount * 2, 12),
+    }).map((chunk) =>
+      mergeContextWindow({
+        chunk,
+        chunkMap,
+      }),
+    );
 
     return {
       chunks: rankedChunks,

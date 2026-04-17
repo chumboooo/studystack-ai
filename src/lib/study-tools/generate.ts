@@ -1,5 +1,8 @@
 import { getGroundedAnswerModel, getOpenAIClient } from "@/lib/openai/server";
-import { selectStudyChunks } from "@/lib/study-tools/source-selection";
+import {
+  isGeneratedStudyItemRelevant,
+  selectStudyChunks,
+} from "@/lib/study-tools/source-selection";
 import type { StudyChunk } from "@/lib/study-tools/retrieval";
 
 const MAX_SOURCE_CHUNKS = 6;
@@ -38,11 +41,11 @@ type QuizGenerationResult = {
   requestedCount: number;
 };
 
-function prepareSources(chunks: StudyChunk[], titleHint: string) {
+function prepareSources(chunks: StudyChunk[], queryText: string) {
   let remaining = MAX_TOTAL_CHARS;
   const selectedChunks = selectStudyChunks({
     chunks,
-    queryText: titleHint,
+    queryText,
     limit: MAX_SOURCE_CHUNKS,
   });
 
@@ -133,12 +136,14 @@ function resolveCorrectChoiceIndex(
 
 async function requestQuizPayload({
   titleHint,
+  studyTopic,
   sources,
   questionCount,
   retry,
   existingQuestions = [],
 }: {
   titleHint: string;
+  studyTopic: string;
   sources: PreparedSource[];
   questionCount: number;
   retry?: boolean;
@@ -168,7 +173,7 @@ async function requestQuizPayload({
         content: [
           {
             type: "input_text",
-            text: `Create ${questionCount} multiple-choice questions for: ${titleHint}${existingQuestions.length > 0 ? `\n\nDo not repeat or closely paraphrase these existing questions:\n- ${existingQuestions.join("\n- ")}` : ""}\n\nSources:\n${sources
+            text: `Create ${questionCount} multiple-choice questions for this study topic: ${studyTopic}\nQuiz title: ${titleHint}${existingQuestions.length > 0 ? `\n\nDo not repeat or closely paraphrase these existing questions:\n- ${existingQuestions.join("\n- ")}` : ""}\n\nUse only these sources:\n${sources
               .map(
                 ({ label, chunk }) =>
                   `[${label}] ${chunk.document_title} (chunk ${chunk.chunk_index + 1})\n${chunk.content}`,
@@ -184,13 +189,16 @@ async function requestQuizPayload({
 export async function generateFlashcardsFromChunks({
   chunks,
   titleHint,
+  studyTopic,
   cardCount = 6,
 }: {
   chunks: StudyChunk[];
   titleHint: string;
+  studyTopic: string;
   cardCount?: number;
 }): Promise<FlashcardGenerationResult> {
-  const sources = prepareSources(chunks, titleHint);
+  const normalizedTopic = studyTopic.trim() || titleHint;
+  const sources = prepareSources(chunks, normalizedTopic);
 
   if (sources.length === 0) {
     throw new Error("No useful chunks were available for flashcard generation.");
@@ -226,7 +234,7 @@ export async function generateFlashcardsFromChunks({
           content: [
             {
               type: "input_text",
-              text: `Create ${remainingCount} strong flashcards for: ${titleHint}${existingPrompts.length > 0 ? `\n\nDo not repeat or closely paraphrase these existing flashcard fronts:\n- ${existingPrompts.join("\n- ")}` : ""}\n\nSources:\n${sources
+              text: `Create ${remainingCount} strong flashcards for this study topic: ${normalizedTopic}\nSet title: ${titleHint}${existingPrompts.length > 0 ? `\n\nDo not repeat or closely paraphrase these existing flashcard fronts:\n- ${existingPrompts.join("\n- ")}` : ""}\n\nUse only these sources:\n${sources
                 .map(
                   ({ label, chunk }) =>
                     `[${label}] ${chunk.document_title} (chunk ${chunk.chunk_index + 1})\n${chunk.content}`,
@@ -260,8 +268,15 @@ export async function generateFlashcardsFromChunks({
       const sourceLabel = typeof item.sourceLabel === "string" ? item.sourceLabel.trim() : "";
       const sourceChunk = sourceMap.get(sourceLabel.toLowerCase());
       const dedupeKey = `${front.toLowerCase()}|${back.toLowerCase()}`;
+      const isRelevant =
+        sourceChunk &&
+        isGeneratedStudyItemRelevant({
+          itemText: `${front}\n${back}`,
+          sourceContent: sourceChunk.content,
+          queryText: normalizedTopic,
+        });
 
-      if (!front || !back || !sourceChunk || collected.has(dedupeKey)) {
+      if (!front || !back || !sourceChunk || !isRelevant || collected.has(dedupeKey)) {
         continue;
       }
 
@@ -293,13 +308,16 @@ export async function generateFlashcardsFromChunks({
 export async function generateQuizFromChunks({
   chunks,
   titleHint,
+  studyTopic,
   questionCount = 5,
 }: {
   chunks: StudyChunk[];
   titleHint: string;
+  studyTopic: string;
   questionCount?: number;
 }): Promise<QuizGenerationResult> {
-  const sources = prepareSources(chunks, titleHint);
+  const normalizedTopic = studyTopic.trim() || titleHint;
+  const sources = prepareSources(chunks, normalizedTopic);
 
   if (sources.length === 0) {
     throw new Error("No useful chunks were available for quiz generation.");
@@ -313,6 +331,7 @@ export async function generateQuizFromChunks({
     const retry = pass > 0;
     const response = await requestQuizPayload({
       titleHint,
+      studyTopic: normalizedTopic,
       sources,
       questionCount: remainingCount,
       retry,
@@ -343,11 +362,20 @@ export async function generateQuizFromChunks({
       const choices = normalizeChoiceArray(record.choices ?? record.options).slice(0, 4);
       const correctChoiceIndex = resolveCorrectChoiceIndex(record, choices);
       const dedupeKey = question.toLowerCase();
+      const correctChoice = correctChoiceIndex >= 0 ? choices[correctChoiceIndex] : "";
+      const isRelevant =
+        sourceChunk &&
+        isGeneratedStudyItemRelevant({
+          itemText: `${question}\n${correctChoice}\n${explanation}`,
+          sourceContent: sourceChunk.content,
+          queryText: normalizedTopic,
+        });
 
       if (
         !question ||
         !explanation ||
         !sourceChunk ||
+        !isRelevant ||
         choices.length !== 4 ||
         correctChoiceIndex < 0 ||
         correctChoiceIndex > 3 ||
