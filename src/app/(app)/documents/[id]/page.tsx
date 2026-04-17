@@ -68,7 +68,7 @@ export default async function DocumentDetailPage({
 
         <Card className="space-y-3">
           <CardTitle>Document detail is unavailable</CardTitle>
-          <CardDescription>{error.message}</CardDescription>
+          <CardDescription>Please refresh and try again.</CardDescription>
         </Card>
       </div>
     );

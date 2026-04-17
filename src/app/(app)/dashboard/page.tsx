@@ -105,7 +105,7 @@ export default async function DashboardPage() {
 
           {error ? (
             <AlertBanner tone="error">
-              Dashboard could not load right now: {error.message}
+              Dashboard could not load right now. Please refresh and try again.
             </AlertBanner>
           ) : recentDocuments.length === 0 ? (
               <EmptyState

@@ -5,10 +5,12 @@ import { useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { AlertBanner } from "@/components/ui/alert-banner";
-
-function sanitizeFileName(fileName: string) {
-  return fileName.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-");
-}
+import {
+  isAllowedPdfMetadata,
+  MAX_PDF_UPLOAD_BYTES,
+  PDF_MIME_TYPE,
+  sanitizeUploadFileName,
+} from "@/lib/documents/upload-validation";
 
 function buildDocumentsUrl(params: Record<string, string>) {
   return `/documents?${new URLSearchParams(params).toString()}`;
@@ -38,10 +40,13 @@ export function UploadDocumentForm({
       return;
     }
 
-    const isPdf =
-      fileEntry.type === "application/pdf" || fileEntry.name.toLowerCase().endsWith(".pdf");
-
-    if (!isPdf) {
+    if (
+      !isAllowedPdfMetadata({
+        fileName: fileEntry.name,
+        mimeType: fileEntry.type || PDF_MIME_TYPE,
+        fileSize: fileEntry.size,
+      })
+    ) {
       setErrorMessage("Only PDF uploads are supported right now.");
       setStatusMessage(null);
       return;
@@ -52,10 +57,10 @@ export function UploadDocumentForm({
       setStatusMessage("Uploading your PDF...");
 
       const supabase = createClient();
-      const safeFileName = sanitizeFileName(fileEntry.name);
+      const safeFileName = sanitizeUploadFileName(fileEntry.name);
       const filePath = `${userId}/${crypto.randomUUID()}-${safeFileName}`;
       const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, fileEntry, {
-        contentType: "application/pdf",
+        contentType: PDF_MIME_TYPE,
         upsert: false,
       });
 
@@ -64,7 +69,7 @@ export function UploadDocumentForm({
         setErrorMessage(
           uploadError.message.includes("maximum allowed size")
             ? "This PDF is larger than the current upload limit."
-            : uploadError.message,
+            : "The PDF could not be uploaded. Please try again.",
         );
         return;
       }
@@ -122,7 +127,7 @@ export function UploadDocumentForm({
         router.refresh();
       } catch (error) {
         setStatusMessage(null);
-        setErrorMessage(error instanceof Error ? error.message : String(error));
+        setErrorMessage("The upload could not be completed. Please try again.");
       }
     });
   };
@@ -155,7 +160,7 @@ export function UploadDocumentForm({
           className="block w-full rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-4 text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-cyan-300 file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-950 hover:file:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-70"
         />
         <p className="text-xs text-slate-500">
-          PDF only. Larger files can be added to your study library without leaving this page.
+          PDF only. Maximum file size is {Math.floor(MAX_PDF_UPLOAD_BYTES / 1024 / 1024)} MB.
         </p>
       </label>
 

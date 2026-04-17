@@ -3,9 +3,9 @@ import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
-  { href: "#features", label: "Features" },
-  { href: "#workflow", label: "How it works" },
-  { href: "#start", label: "Get started" },
+  { href: "/features", label: "Features" },
+  { href: "/how-it-works", label: "How it works" },
+  { href: "/get-started", label: "Get started" },
 ];
 
 export function Navbar() {

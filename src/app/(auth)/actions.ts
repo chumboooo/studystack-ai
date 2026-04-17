@@ -30,7 +30,7 @@ export async function signIn(formData: FormData) {
   if (error) {
     redirect(
       buildRedirect("/sign-in", {
-        error: error.message,
+        error: "Could not sign in with those credentials.",
       }),
     );
   }
@@ -67,7 +67,7 @@ export async function signUp(formData: FormData) {
   if (error) {
     redirect(
       buildRedirect("/sign-up", {
-        error: error.message,
+        error: "Could not create an account with those details.",
       }),
     );
   }

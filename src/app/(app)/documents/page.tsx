@@ -157,7 +157,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
           <Card className="space-y-3">
             <CardTitle>Documents could not load</CardTitle>
             <CardDescription>
-              StudyStack could not load your documents right now: {error.message}
+              StudyStack could not load your documents right now.
             </CardDescription>
             <CardDescription>
               Try refreshing the page. If this keeps happening, check that your project setup is complete.

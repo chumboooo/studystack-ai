@@ -14,11 +14,11 @@ export function getDocumentTitleFromFileName(fileName: string) {
 }
 
 export function formatDocumentProcessingError(error: unknown) {
-  if (error instanceof Error) {
-    return `${error.name}: ${error.message}`;
+  if (error instanceof Error && error.message.toLowerCase().includes("password")) {
+    return "This PDF appears to be password-protected.";
   }
 
-  return String(error);
+  return "StudyStack could not read this PDF clearly enough to prepare it.";
 }
 
 export async function runDocumentExtraction({
@@ -114,7 +114,7 @@ export async function runDocumentExtraction({
           }),
         );
       } catch (error) {
-        embeddingErrorMessage = `This document is ready, but some study helpers may be less accurate. ${formatDocumentProcessingError(error)}`;
+        embeddingErrorMessage = "This document is ready, but some study helpers may be less accurate.";
       }
     }
 

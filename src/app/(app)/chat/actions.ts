@@ -57,6 +57,7 @@ export async function submitGroundedQuestion(formData: FormData) {
       .from("chat_sessions")
       .select("id")
       .eq("id", activeSessionId)
+      .eq("user_id", user.id)
       .maybeSingle();
 
     if (existingSessionError || !existingSession) {
@@ -80,7 +81,7 @@ export async function submitGroundedQuestion(formData: FormData) {
     if (sessionError || !newSession) {
       redirect(
         buildChatRedirect({
-          error: sessionError?.message ?? "A new chat session could not be created.",
+          error: "A new chat session could not be created.",
           q: question,
         }),
       );
@@ -100,7 +101,7 @@ export async function submitGroundedQuestion(formData: FormData) {
     redirect(
       buildChatRedirect({
         session: activeSessionId,
-        error: error instanceof Error ? error.message : String(error),
+        error: "StudyStack could not search your materials right now.",
         q: question,
       }),
     );
@@ -144,7 +145,7 @@ export async function submitGroundedQuestion(formData: FormData) {
     redirect(
       buildChatRedirect({
         session: activeSessionId,
-        error: turnError?.message ?? "The grounded answer could not be saved.",
+        error: "The answer could not be saved.",
         q: question,
       }),
     );
@@ -170,7 +171,7 @@ export async function submitGroundedQuestion(formData: FormData) {
         buildChatRedirect({
           session: activeSessionId,
           turn: turn.id,
-          error: sourceError.message,
+          error: "The answer was saved, but its sources could not be saved.",
           q: question,
         }),
       );
@@ -243,7 +244,7 @@ export async function deleteChatSession(formData: FormData) {
   if (deleteError) {
     redirect(
       buildChatRedirect({
-        error: deleteError.message,
+        error: "That conversation could not be deleted.",
         ...(returnSessionId && returnSessionId !== sessionId ? { session: returnSessionId } : {}),
         ...(returnTurnId && returnSessionId !== sessionId ? { turn: returnTurnId } : {}),
       }),
@@ -308,7 +309,7 @@ export async function deleteChatTurn(formData: FormData) {
   if (deleteError) {
     redirect(
       buildChatRedirect({
-        error: deleteError.message,
+        error: "That saved question could not be deleted.",
         ...(returnSessionId ? { session: returnSessionId } : {}),
         ...(returnTurnId ? { turn: returnTurnId } : {}),
       }),

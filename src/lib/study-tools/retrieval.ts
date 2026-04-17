@@ -62,7 +62,7 @@ export async function retrieveStudyChunks({
       .maybeSingle();
 
     if (documentError || !document) {
-      throw new Error(documentError?.message ?? "That document could not be found.");
+      throw new Error("That document could not be found.");
     }
 
     const { data: chunks, error: chunksError } = await supabase
@@ -73,7 +73,7 @@ export async function retrieveStudyChunks({
       .limit(Math.max(matchCount * 4, 24));
 
     if (chunksError) {
-      throw new Error(chunksError.message);
+      throw new Error("StudyStack could not read that document.");
     }
 
     const rankedChunks = selectStudyChunks({

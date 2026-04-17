@@ -44,7 +44,7 @@ async function generateAndStoreFlashcards({
   } catch (error) {
     redirect(
       buildStudyToolRedirect("flashcards", {
-        error: error instanceof Error ? error.message : String(error),
+        error: "StudyStack could not find enough useful material for flashcards.",
       }),
     );
   }
@@ -68,7 +68,7 @@ async function generateAndStoreFlashcards({
   } catch (error) {
     redirect(
       buildStudyToolRedirect("flashcards", {
-        error: error instanceof Error ? error.message : String(error),
+        error: "Flashcards could not be generated right now.",
       }),
     );
   }
@@ -106,7 +106,7 @@ async function generateAndStoreFlashcards({
   }
 
   if (replaceExisting) {
-    await supabase.from("flashcards").delete().eq("set_id", targetSetId);
+    await supabase.from("flashcards").delete().eq("set_id", targetSetId).eq("user_id", user.id);
     await supabase
       .from("flashcard_sets")
       .update({
@@ -116,7 +116,8 @@ async function generateAndStoreFlashcards({
         document_id: source.documentId,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", targetSetId);
+      .eq("id", targetSetId)
+      .eq("user_id", user.id);
   }
 
   const { error: insertError } = await supabase.from("flashcards").insert(
@@ -135,7 +136,7 @@ async function generateAndStoreFlashcards({
   if (insertError) {
     redirect(
       buildStudyToolRedirect("flashcards", {
-        error: insertError.message,
+        error: "The flashcards could not be saved.",
       }),
     );
   }
@@ -166,7 +167,7 @@ export async function generateFlashcardSet(formData: FormData) {
 }
 
 export async function regenerateFlashcardSet(formData: FormData) {
-  const { supabase } = await requireStudyToolUser();
+  const { supabase, user } = await requireStudyToolUser();
   const setId = String(formData.get("setId") ?? "").trim();
 
   if (!setId) {
@@ -177,12 +178,13 @@ export async function regenerateFlashcardSet(formData: FormData) {
     .from("flashcard_sets")
     .select("id, title, query_text, document_id")
     .eq("id", setId)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (error || !set) {
     redirect(
       buildStudyToolRedirect("flashcards", {
-        error: error?.message ?? "That flashcard set could not be found.",
+        error: "That flashcard set could not be found.",
       }),
     );
   }
@@ -203,17 +205,21 @@ export async function regenerateFlashcardSet(formData: FormData) {
 }
 
 export async function deleteFlashcardSet(formData: FormData) {
-  const { supabase } = await requireStudyToolUser();
+  const { supabase, user } = await requireStudyToolUser();
   const setId = String(formData.get("setId") ?? "").trim();
 
   if (!setId) {
     redirect(buildStudyToolRedirect("flashcards", { error: "A flashcard set id is required." }));
   }
 
-  const { error } = await supabase.from("flashcard_sets").delete().eq("id", setId);
+  const { error } = await supabase
+    .from("flashcard_sets")
+    .delete()
+    .eq("id", setId)
+    .eq("user_id", user.id);
 
   if (error) {
-    redirect(buildStudyToolRedirect("flashcards", { error: error.message }));
+    redirect(buildStudyToolRedirect("flashcards", { error: "That flashcard set could not be deleted." }));
   }
 
   revalidatePath("/flashcards");

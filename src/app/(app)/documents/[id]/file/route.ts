@@ -134,7 +134,7 @@ export async function GET(
   if (documentError) {
     return createErrorResponse({
       title: "This PDF is unavailable",
-      message: documentError.message,
+      message: "StudyStack could not open this PDF right now. Please try again.",
       status: 500,
       backHref,
     });
@@ -157,9 +157,7 @@ export async function GET(
   if (downloadError || !fileData) {
     return createErrorResponse({
       title: "The PDF could not be loaded",
-      message:
-        downloadError?.message ??
-        "The file is missing or could not be opened right now.",
+      message: "The file is missing or could not be opened right now.",
       status: 404,
       backHref,
     });

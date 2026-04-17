@@ -44,7 +44,7 @@ async function generateAndStoreQuiz({
   } catch (error) {
     redirect(
       buildStudyToolRedirect("quizzes", {
-        error: error instanceof Error ? error.message : String(error),
+        error: "StudyStack could not find enough useful material for a quiz.",
       }),
     );
   }
@@ -68,7 +68,7 @@ async function generateAndStoreQuiz({
   } catch (error) {
     redirect(
       buildStudyToolRedirect("quizzes", {
-        error: error instanceof Error ? error.message : String(error),
+        error: "The quiz could not be generated right now.",
       }),
     );
   }
@@ -106,7 +106,7 @@ async function generateAndStoreQuiz({
   }
 
   if (replaceExisting) {
-    await supabase.from("quiz_questions").delete().eq("set_id", targetSetId);
+    await supabase.from("quiz_questions").delete().eq("set_id", targetSetId).eq("user_id", user.id);
     await supabase
       .from("quiz_sets")
       .update({
@@ -116,7 +116,8 @@ async function generateAndStoreQuiz({
         document_id: source.documentId,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", targetSetId);
+      .eq("id", targetSetId)
+      .eq("user_id", user.id);
   }
 
   const { error: insertError } = await supabase.from("quiz_questions").insert(
@@ -137,7 +138,7 @@ async function generateAndStoreQuiz({
   if (insertError) {
     redirect(
       buildStudyToolRedirect("quizzes", {
-        error: insertError.message,
+        error: "The quiz could not be saved.",
       }),
     );
   }
@@ -168,7 +169,7 @@ export async function generateQuizSet(formData: FormData) {
 }
 
 export async function regenerateQuizSet(formData: FormData) {
-  const { supabase } = await requireStudyToolUser();
+  const { supabase, user } = await requireStudyToolUser();
   const setId = String(formData.get("setId") ?? "").trim();
 
   if (!setId) {
@@ -179,12 +180,13 @@ export async function regenerateQuizSet(formData: FormData) {
     .from("quiz_sets")
     .select("id, title, query_text, document_id")
     .eq("id", setId)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (error || !set) {
     redirect(
       buildStudyToolRedirect("quizzes", {
-        error: error?.message ?? "That quiz set could not be found.",
+        error: "That quiz set could not be found.",
       }),
     );
   }
@@ -205,17 +207,21 @@ export async function regenerateQuizSet(formData: FormData) {
 }
 
 export async function deleteQuizSet(formData: FormData) {
-  const { supabase } = await requireStudyToolUser();
+  const { supabase, user } = await requireStudyToolUser();
   const setId = String(formData.get("setId") ?? "").trim();
 
   if (!setId) {
     redirect(buildStudyToolRedirect("quizzes", { error: "A quiz set id is required." }));
   }
 
-  const { error } = await supabase.from("quiz_sets").delete().eq("id", setId);
+  const { error } = await supabase
+    .from("quiz_sets")
+    .delete()
+    .eq("id", setId)
+    .eq("user_id", user.id);
 
   if (error) {
-    redirect(buildStudyToolRedirect("quizzes", { error: error.message }));
+    redirect(buildStudyToolRedirect("quizzes", { error: "That quiz could not be deleted." }));
   }
 
   revalidatePath("/quizzes");

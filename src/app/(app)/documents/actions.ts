@@ -37,12 +37,13 @@ async function deleteStoredDocumentFile({
     .from("documents")
     .select("id, title, file_path")
     .eq("id", documentId)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (fetchError) {
     redirect(
       buildRedirect({
-        error: fetchError.message,
+        error: "That document could not be loaded.",
       }),
     );
   }
@@ -61,17 +62,21 @@ async function deleteStoredDocumentFile({
   if (storageDeleteError) {
     redirect(
       buildRedirect({
-        error: storageDeleteError.message,
+        error: "The document file could not be deleted.",
       }),
     );
   }
 
-  const { error: deleteError } = await supabase.from("documents").delete().eq("id", document.id);
+  const { error: deleteError } = await supabase
+    .from("documents")
+    .delete()
+    .eq("id", document.id)
+    .eq("user_id", user.id);
 
   if (deleteError) {
     redirect(
       buildRedirect({
-        error: deleteError.message,
+        error: "The document could not be deleted.",
       }),
     );
   }
@@ -118,12 +123,13 @@ async function updateStoredDocumentTitle({
     .from("documents")
     .select("id, title")
     .eq("id", documentId)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (fetchError) {
     redirect(
       buildScopedRedirect(redirectTo, {
-        error: fetchError.message,
+        error: "That document could not be loaded.",
       }),
     );
   }
@@ -149,12 +155,13 @@ async function updateStoredDocumentTitle({
     .update({
       title: normalizedTitle,
     })
-    .eq("id", document.id);
+    .eq("id", document.id)
+    .eq("user_id", user.id);
 
   if (updateError) {
     redirect(
       buildScopedRedirect(redirectTo, {
-        error: updateError.message,
+        error: "The document title could not be updated.",
       }),
     );
   }
@@ -226,12 +233,13 @@ async function reprocessStoredDocument({
     .from("documents")
     .select("id, title, file_path")
     .eq("id", documentId)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (fetchError) {
     redirect(
       buildScopedRedirect(redirectTo, {
-        error: fetchError.message,
+        error: "That document could not be loaded.",
       }),
     );
   }
@@ -252,7 +260,7 @@ async function reprocessStoredDocument({
   if (downloadError || !downloadedFile) {
     redirect(
       buildScopedRedirect(redirectTo, {
-        error: downloadError?.message ?? "This PDF could not be opened for refresh.",
+        error: "This PDF could not be opened for refresh.",
       }),
     );
   }

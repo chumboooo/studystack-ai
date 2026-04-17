@@ -52,9 +52,9 @@ function getButtonClassName({
 
 export function Button(props: ButtonAsButtonProps | ButtonAsLinkProps | ButtonAsAnchorProps) {
   if ("href" in props) {
-    const { children, variant, size, className, href, ...rest } = props;
+    const { children, variant, size, className, href, external, ...rest } = props;
 
-    if ("external" in props && props.external) {
+    if (external) {
       return (
         <a
           href={href}

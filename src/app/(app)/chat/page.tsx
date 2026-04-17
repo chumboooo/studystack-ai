@@ -177,11 +177,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
       {hasDataError ? (
         <AlertBanner tone="error">
-          Your chat history could not be loaded right now.{" "}
-          {recentTurnsError?.message ||
-            sessionTurnsError?.message ||
-            selectedSourcesError?.message ||
-            sessionsError?.message}
+          Your chat history could not be loaded right now. Please refresh and try again.
         </AlertBanner>
       ) : null}
 
