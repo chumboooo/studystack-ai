@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { MathText } from "@/components/ui/math-text";
 import { buildDocumentFileUrl, formatDocumentDate, formatFileSize } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
@@ -320,7 +321,7 @@ export default async function DocumentDetailPage({
                         Preview
                       </p>
                       <p className="mt-3 text-sm leading-7 text-slate-200">
-                        {getChunkPreview(chunk.content)}
+                        <MathText>{getChunkPreview(chunk.content)}</MathText>
                       </p>
                     </div>
 
@@ -329,9 +330,9 @@ export default async function DocumentDetailPage({
                         View full section
                       </summary>
                       <div className="mt-4 border-t border-white/10 pt-4">
-                        <pre className="whitespace-pre-wrap text-sm leading-8 text-slate-300">
-                          {chunk.content}
-                        </pre>
+                        <div className="whitespace-pre-wrap text-sm leading-8 text-slate-300">
+                          <MathText>{chunk.content}</MathText>
+                        </div>
                       </div>
                     </details>
                   </div>

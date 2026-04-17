@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { MathText } from "@/components/ui/math-text";
 import { buildDocumentChunkUrl } from "@/lib/documents";
 
 type Flashcard = {
@@ -46,7 +47,9 @@ export function FlashcardView({
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Front
                 </p>
-                <p className="mt-3 text-base leading-7 text-white">{card.prompt}</p>
+                <p className="mt-3 text-base leading-7 text-white">
+                  <MathText>{card.prompt}</MathText>
+                </p>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
@@ -69,7 +72,11 @@ export function FlashcardView({
                   </Button>
                 </div>
                 <p className="mt-3 text-sm leading-7 text-slate-200">
-                  {isRevealed ? card.answer : "Reveal the back to review the answer."}
+                  {isRevealed ? (
+                    <MathText>{card.answer}</MathText>
+                  ) : (
+                    "Reveal the back to review the answer."
+                  )}
                 </p>
               </div>
 

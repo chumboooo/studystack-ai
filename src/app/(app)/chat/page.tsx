@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { MathText } from "@/components/ui/math-text";
 import { buildDocumentChunkUrl, formatDocumentDate } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
@@ -60,35 +61,6 @@ function formatAnswerForDisplay(content: string) {
     .replace(/__(.*?)__/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
     .trim();
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function highlightMatches(content: string, query: string) {
-  const terms = query
-    .split(/\s+/)
-    .map((term) => term.trim())
-    .filter((term) => term.length >= 3);
-
-  if (terms.length === 0) {
-    return getChunkPreview(content);
-  }
-
-  const preview = getChunkPreview(content);
-  const expression = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "gi");
-  const parts = preview.split(expression);
-
-  return parts.map((part, index) =>
-    terms.some((term) => part.toLowerCase() === term.toLowerCase()) ? (
-      <mark key={`${part}-${index}`} className="rounded bg-cyan-300/20 px-1 text-cyan-100">
-        {part}
-      </mark>
-    ) : (
-      <span key={`${part}-${index}`}>{part}</span>
-    ),
-  );
 }
 
 export default async function ChatPage({ searchParams }: ChatPageProps) {
@@ -253,7 +225,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
                           : "border-white/10 bg-white/5 text-slate-300 hover:border-cyan-300/20 hover:bg-white/[0.08]"
                       }`}
                     >
-                      {sessionTurn.question}
+                      <MathText>{sessionTurn.question}</MathText>
                     </a>
                   ))}
                 </div>
@@ -335,7 +307,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
                           </span>
                         </div>
                         <p className="mt-3 text-sm font-medium leading-6 text-white">
-                          {historyTurn.question}
+                          <MathText>{historyTurn.question}</MathText>
                         </p>
                       </a>
                       <DeleteChatTurnForm
@@ -388,7 +360,9 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
 
               <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">Question</p>
-                <p className="mt-3 text-base leading-7 text-white">{selectedTurn.question}</p>
+                <p className="mt-3 text-base leading-7 text-white">
+                  <MathText>{selectedTurn.question}</MathText>
+                </p>
               </div>
 
               {selectedTurn.status === "completed" ? (
@@ -397,7 +371,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
                     Answer
                   </p>
                   <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-100">
-                    {formatAnswerForDisplay(selectedTurn.answer ?? "")}
+                    <MathText>{formatAnswerForDisplay(selectedTurn.answer ?? "")}</MathText>
                   </div>
                 </div>
               ) : selectedTurn.status === "no_sources" ? (
@@ -469,7 +443,9 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
                             </div>
                           </div>
                           <p className="text-sm leading-7 text-slate-300">
-                            {highlightMatches(source.content_excerpt, selectedTurn.question)}
+                            <MathText highlightQuery={selectedTurn.question}>
+                              {getChunkPreview(source.content_excerpt)}
+                            </MathText>
                           </p>
                         </div>
 

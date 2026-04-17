@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { MathText } from "@/components/ui/math-text";
 import { buildDocumentChunkUrl } from "@/lib/documents";
 
 type QuizQuestion = {
@@ -97,7 +98,7 @@ export function QuizStudySession({ questions }: { questions: QuizQuestion[] }) {
         </div>
 
         <h2 className="mt-8 text-2xl font-semibold leading-tight text-white sm:text-4xl">
-          {activeQuestion.question}
+          <MathText>{activeQuestion.question}</MathText>
         </h2>
 
         <div className="mt-8 grid gap-3">
@@ -129,7 +130,7 @@ export function QuizStudySession({ questions }: { questions: QuizQuestion[] }) {
                 <span className="mr-3 font-semibold text-cyan-200">
                   {String.fromCharCode(65 + choiceIndex)}.
                 </span>
-                {choice}
+                <MathText>{choice}</MathText>
               </button>
             );
           })}
@@ -140,7 +141,9 @@ export function QuizStudySession({ questions }: { questions: QuizQuestion[] }) {
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">
               Explanation
             </p>
-            <p className="mt-3 text-sm leading-7 text-slate-200">{activeQuestion.explanation}</p>
+            <p className="mt-3 text-sm leading-7 text-slate-200">
+              <MathText>{activeQuestion.explanation}</MathText>
+            </p>
           </div>
         ) : null}
       </article>

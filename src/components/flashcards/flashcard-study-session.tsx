@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { MathText } from "@/components/ui/math-text";
 import { buildDocumentChunkUrl } from "@/lib/documents";
 
 type Flashcard = {
@@ -82,9 +83,9 @@ export function FlashcardStudySession({ cards }: { cards: Flashcard[] }) {
           </div>
 
           <div className="mx-auto max-w-3xl text-center">
-            <p className="text-2xl font-semibold leading-tight text-white sm:text-4xl">
-              {flipped ? activeCard.answer : activeCard.prompt}
-            </p>
+            <div className="text-2xl font-semibold leading-tight text-white sm:text-4xl">
+              <MathText>{flipped ? activeCard.answer : activeCard.prompt}</MathText>
+            </div>
           </div>
 
           <div className="flex justify-center">

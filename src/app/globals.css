@@ -49,6 +49,39 @@ optgroup {
   color: white;
 }
 
+.math-text {
+  white-space: inherit;
+  overflow-wrap: anywhere;
+}
+
+.math-inline {
+  display: inline-flex;
+  max-width: 100%;
+  vertical-align: -0.15em;
+}
+
+.math-display {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.4rem 0;
+}
+
+.math-text .katex {
+  color: inherit;
+  font-size: 1.04em;
+}
+
+.math-text .katex-display {
+  margin: 0.35rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.math-text .katex-html {
+  max-width: 100%;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

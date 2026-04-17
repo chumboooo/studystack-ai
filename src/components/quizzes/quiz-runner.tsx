@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { MathText } from "@/components/ui/math-text";
 import { buildDocumentChunkUrl } from "@/lib/documents";
 
 type QuizQuestion = {
@@ -72,7 +73,9 @@ export function QuizRunner({ questions }: { questions: QuizQuestion[] }) {
               </span>
             </div>
 
-            <p className="mt-4 text-base leading-7 text-white">{question.question}</p>
+            <p className="mt-4 text-base leading-7 text-white">
+              <MathText>{question.question}</MathText>
+            </p>
 
             <div className="mt-5 grid gap-3">
               {question.choices.map((choice, choiceIndex) => {
@@ -105,7 +108,9 @@ export function QuizRunner({ questions }: { questions: QuizQuestion[] }) {
                         }))
                       }
                     />
-                    <span className="text-sm leading-6 text-slate-200">{choice}</span>
+                    <span className="text-sm leading-6 text-slate-200">
+                      <MathText>{choice}</MathText>
+                    </span>
                   </label>
                 );
               })}
@@ -116,7 +121,9 @@ export function QuizRunner({ questions }: { questions: QuizQuestion[] }) {
                 <p className="text-sm font-medium text-white">
                   {answers[question.id] === question.correct_choice_index ? "Correct" : "Review"}
                 </p>
-                <p className="text-sm leading-6 text-slate-300">{question.explanation}</p>
+                <p className="text-sm leading-6 text-slate-300">
+                  <MathText>{question.explanation}</MathText>
+                </p>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm text-slate-400">
                     Source: {question.source_document_title}, section {question.source_chunk_index + 1}
