@@ -79,7 +79,7 @@ The flashcard study page provides a spacious card-by-card review flow with progr
 
 The quiz page creates a focused practice experience with progress tracking, multiple-choice answers, and source-backed review.
 
-Additional screenshots worth adding later: `/features`, `/how-it-works`, and `/get-started`.
+The preview focuses on the core study workflow. Additional preview coverage could include `/features`, `/how-it-works`, and `/get-started`.
 
 ## Getting Started
 
@@ -93,7 +93,7 @@ Additional screenshots worth adding later: `/features`, `/how-it-works`, and `/g
 ### 1. Clone the Repository
 
 ```bash
-git clone <your-repo-url>
+git clone <repository-url>
 cd studystack-ai
 ```
 
@@ -111,14 +111,14 @@ Copy the example environment file:
 cp .env.example .env.local
 ```
 
-Then fill in the values for your Supabase project and OpenAI key.
+Then provide values for a Supabase project and OpenAI key.
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-or-anon-key
+NEXT_PUBLIC_SUPABASE_URL=https://<supabase-project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<supabase-publishable-or-anon-key>
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 SUPABASE_DOCUMENTS_BUCKET=documents
-OPENAI_API_KEY=your-openai-api-key
+OPENAI_API_KEY=<openai-api-key>
 OPENAI_MODEL=gpt-5-mini
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_EMBEDDING_DIMENSIONS=1536
@@ -203,7 +203,7 @@ Security-related implementation details include:
 - Browser security headers are configured in `next.config.ts`.
 - Retrieved document text is treated as untrusted input in AI prompts.
 
-If you deploy your own copy, verify that the SQL policies in `supabase/` are applied in your Supabase project.
+Self-hosted deployments should verify that the SQL policies in `supabase/` are applied in the target Supabase project.
 
 ## Deployment Notes
 
@@ -220,7 +220,7 @@ For Vercel:
 Supabase Auth URLs should include:
 
 - Local callback: `http://localhost:3000/auth/callback`
-- Production callback: `https://<your-domain>/auth/callback`
+- Production callback: `https://<production-domain>/auth/callback`
 
 ## Development Commands
 

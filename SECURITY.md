@@ -1,16 +1,14 @@
 # Security Policy
 
-StudyStack AI handles private study documents, generated study materials, and authenticated user data. Please do not report security issues in public GitHub issues.
+StudyStack AI handles private study documents, generated study materials, and authenticated user data. Security issues should not be reported in public GitHub issues.
 
 ## Reporting a Vulnerability
 
-If you find a security issue, contact the repository owner privately.
-
-TODO: Add a preferred security contact email or GitHub Security Advisory process before accepting external reports.
+Security reports should be sent privately through GitHub security advisories when available, or through another private maintainer contact channel listed on the repository profile.
 
 ## Sensitive Data Guidelines
 
-Please do not share:
+Security reports and project discussions should not include:
 
 - Real API keys or tokens
 - Supabase service role keys
@@ -30,4 +28,4 @@ This project is designed to keep privileged operations server-side:
 - PDF preview and download are served through authenticated routes.
 - Browser security headers are configured in `next.config.ts`.
 
-If you deploy your own copy, verify that all SQL files in `supabase/` have been applied to your Supabase project.
+Self-hosted deployments should verify that all SQL files in `supabase/` have been applied to the target Supabase project.

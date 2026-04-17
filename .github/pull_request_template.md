@@ -11,7 +11,7 @@
 ## Notes
 
 - Setup or migration changes:
-- Screenshots, if UI changed:
+- Screenshots for UI changes:
 
 ## Safety Checklist
 

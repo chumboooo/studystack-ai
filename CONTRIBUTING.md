@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for taking a look at StudyStack AI. This project is focused on a polished, student-facing study experience, so contributions should preserve existing flows and keep the UI clear for normal users.
+StudyStack AI is focused on a polished, student-facing study experience. Contributions should preserve existing flows and keep the UI clear for normal users.
 
 ## Local Setup
 
@@ -16,7 +16,7 @@ npm install
 cp .env.example .env.local
 ```
 
-3. Fill in Supabase and OpenAI values, then run:
+3. Add Supabase and OpenAI values, then run:
 
 ```bash
 npm run dev
@@ -34,11 +34,11 @@ npm run dev
 
 ## Pull Requests
 
-Before opening a PR, include:
+Pull request descriptions should include:
 
 - What changed
 - How it was tested
 - Any setup or migration notes
 - Screenshots for UI changes, if available
 
-Do not include real API keys, database credentials, or private user data in issues, commits, screenshots, or PR descriptions.
+Issues, commits, screenshots, and PR descriptions must not include real API keys, database credentials, or private user data.

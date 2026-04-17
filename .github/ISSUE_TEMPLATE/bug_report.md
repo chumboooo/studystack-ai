@@ -8,7 +8,7 @@ assignees: ""
 
 ## What happened?
 
-Describe the issue clearly.
+Clear description of the issue.
 
 ## Steps to reproduce
 
@@ -18,11 +18,11 @@ Describe the issue clearly.
 
 ## Expected behavior
 
-What did you expect to happen?
+Expected result.
 
 ## Actual behavior
 
-What happened instead?
+Actual result.
 
 ## Environment
 
@@ -32,8 +32,8 @@ What happened instead?
 
 ## Screenshots
 
-Add screenshots if helpful. Please remove private study material, API keys, or personal information.
+Screenshots may be attached after removing private study material, API keys, or personal information.
 
 ## Additional context
 
-Anything else that may help diagnose the issue.
+Additional context that may help diagnose the issue.

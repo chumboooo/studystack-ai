@@ -8,16 +8,16 @@ assignees: ""
 
 ## Problem
 
-What student problem would this solve?
+Student problem or workflow gap.
 
 ## Proposed solution
 
-Describe the feature or improvement.
+Feature or improvement summary.
 
 ## Alternatives considered
 
-Any other approaches that might work?
+Other approaches considered.
 
 ## Notes
 
-Add mockups, examples, or screenshots if useful. Do not include private study material or secrets.
+Mockups, examples, or screenshots may be attached if useful. Private study material and secrets should not be included.
