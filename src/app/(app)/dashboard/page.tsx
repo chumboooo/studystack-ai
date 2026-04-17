@@ -66,7 +66,7 @@ export default async function DashboardPage() {
           tone="default"
         />
         <StatCard
-          label="Ready for search"
+          label="Ready to study"
           value={String(completedDocuments)}
           change={completedDocuments > 0 ? "Ready to use" : "Nothing ready yet"}
           description="Documents that are ready for chat, flashcards, and quizzes."
@@ -75,8 +75,8 @@ export default async function DashboardPage() {
         <StatCard
           label="Needs attention"
           value={String(failedDocuments)}
-          change={failedDocuments > 0 ? "Review errors" : "No failures"}
-          description="Documents that failed extraction and may need reprocessing."
+          change={failedDocuments > 0 ? "Needs another try" : "All clear"}
+          description="Documents that need another attempt before they can be studied."
           tone={failedDocuments > 0 ? "warning" : "default"}
         />
         <StatCard
@@ -105,7 +105,7 @@ export default async function DashboardPage() {
 
           {error ? (
             <AlertBanner tone="error">
-              Dashboard stats could not load: {error.message}
+              Dashboard could not load right now: {error.message}
             </AlertBanner>
           ) : recentDocuments.length === 0 ? (
               <EmptyState
@@ -147,7 +147,7 @@ export default async function DashboardPage() {
                     ) : (
                       <p className="text-sm leading-6 text-slate-300">
                         {document.content?.extraction_status === "completed"
-                          ? "Ready to open, search, and inspect in detail."
+                          ? "Ready to open, search, and use for study tools."
                           : "Still preparing this file."}
                       </p>
                     )}
@@ -172,14 +172,14 @@ export default async function DashboardPage() {
             <div>
               <CardTitle>Quick actions</CardTitle>
               <CardDescription>
-                Common routes to keep your study flow moving.
+                Shortcuts to keep your study flow moving.
               </CardDescription>
             </div>
             <div className="grid gap-4">
               {[
                 {
                   title: "Upload a new PDF",
-                  detail: "Add a source document to your library.",
+                  detail: "Add notes, slides, or readings to your library.",
                   href: "/documents",
                 },
                 {
@@ -188,8 +188,8 @@ export default async function DashboardPage() {
                   href: "/chat",
                 },
                 {
-                  title: "Browse document detail views",
-                  detail: "Review document text, sections, and file details.",
+                  title: "Review study materials",
+                  detail: "Open your documents and revisit key sections.",
                   href: "/documents",
                 },
               ].map((item) => (
@@ -210,7 +210,7 @@ export default async function DashboardPage() {
 
           <Card className="space-y-5">
             <div>
-              <CardTitle>Pipeline health</CardTitle>
+              <CardTitle>Study library</CardTitle>
               <CardDescription>
                 A quick view of what is ready and what still needs attention.
               </CardDescription>

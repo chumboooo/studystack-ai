@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "StudyStack AI",
-  description: "AI-powered study workflows for documents, flashcards, quizzes, and chat.",
+  description: "Upload study materials, ask questions, generate flashcards, and build quizzes.",
 };
 
 export default function RootLayout({

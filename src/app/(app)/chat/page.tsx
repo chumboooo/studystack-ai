@@ -469,9 +469,6 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
                               </span>
                             </div>
                             <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-400">
-                              {typeof source.rank === "number" ? (
-                                <span>Match score {source.rank.toFixed(3)}</span>
-                              ) : null}
                               <span>Saved with this answer</span>
                             </div>
                           </div>

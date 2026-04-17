@@ -79,7 +79,7 @@ export async function extractPdfText(fileBuffer: ArrayBuffer): Promise<PdfTextEx
       rawText: normalizeWhitespace(pages.filter(Boolean).join("\n\n")),
     };
   } catch (error) {
-    throw new Error(`PDF text extraction failed. ${formatExtractionError(error)}`);
+    throw new Error(`StudyStack could not read text from this PDF. ${formatExtractionError(error)}`);
   } finally {
     await loadingTask.destroy();
   }

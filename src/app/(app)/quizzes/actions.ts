@@ -52,7 +52,7 @@ async function generateAndStoreQuiz({
   if (source.chunks.length === 0) {
     redirect(
       buildStudyToolRedirect("quizzes", {
-        error: "No useful chunks were available for quiz generation.",
+        error: "StudyStack could not find enough useful material for a quiz.",
       }),
     );
   }

@@ -15,9 +15,9 @@ export function AuthShell({ title, description, children }: AuthShellProps) {
         <div className="relative flex h-full flex-col justify-between bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_30%),linear-gradient(180deg,#020617_0%,#0f172a_100%)] p-10">
           <Logo />
           <div className="space-y-6">
-            <Badge>AI-native study workspace</Badge>
+            <Badge>Built for focused study</Badge>
             <h1 className="max-w-lg text-5xl font-semibold tracking-tight text-white">
-              Turn dense course material into study systems that actually stick.
+              Turn dense course material into review sessions that actually stick.
             </h1>
             <p className="max-w-xl text-lg leading-8 text-slate-300">
               Upload notes, generate flashcards, quiz yourself, and keep every concept in a

@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 
 const navItems = [
   { href: "#features", label: "Features" },
-  { href: "#workflow", label: "Workflow" },
-  { href: "#pricing", label: "Pricing" },
+  { href: "#workflow", label: "How it works" },
+  { href: "#start", label: "Get started" },
 ];
 
 export function Navbar() {
@@ -24,7 +24,7 @@ export function Navbar() {
           <Button href="/sign-in" variant="ghost" className="hidden sm:inline-flex">
             Sign in
           </Button>
-          <Button href="/sign-up">Start free</Button>
+          <Button href="/sign-up">Start studying</Button>
         </div>
       </div>
     </header>

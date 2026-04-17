@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   }
 
   if (!filePath.startsWith(`${user.id}/`)) {
-    return NextResponse.json({ error: "This upload path is not allowed for your account." }, { status: 403 });
+    return NextResponse.json({ error: "This upload is not allowed for your account." }, { status: 403 });
   }
 
   if (mimeType !== "application/pdf" && !fileName.toLowerCase().endsWith(".pdf")) {
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       {
         error:
           downloadError?.message ??
-          "The uploaded PDF could not be read back from storage for processing.",
+          "The uploaded PDF could not be opened for study prep.",
       },
       { status: 400 },
     );
@@ -108,7 +108,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        kind: "processing_failed",
+        kind: "preparation_failed",
         documentId: document.id,
         error: `Your PDF was uploaded, but StudyStack could not finish preparing it. ${formatDocumentProcessingError(result.message)}`,
       },

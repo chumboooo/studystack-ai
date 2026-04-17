@@ -90,7 +90,7 @@ export default async function DocumentDetailPage({
       <PageHeader
         badge="Document"
         title={document.title}
-        description="Review document details, extracted text, and the saved source sections for this file."
+        description="Review the document text, source sections, and study options for this file."
         actions={
           <>
             <Button href="/documents" variant="secondary">
@@ -117,15 +117,15 @@ export default async function DocumentDetailPage({
               action={reprocessDocumentFromDetail}
               documentId={document.id}
               redirectTo={`/documents/${document.id}`}
-              label="Reprocess document"
-              pendingLabel="Reprocessing..."
+              label="Refresh document"
+              pendingLabel="Refreshing..."
               className="justify-center border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20"
             />
             <DeleteDocumentForm
               action={deleteDocumentFromDetail}
               documentId={document.id}
               redirectTo="/documents"
-              confirmMessage={`Delete "${document.title}" and all extracted data? This cannot be undone.`}
+              confirmMessage={`Delete "${document.title}" and its saved study data? This cannot be undone.`}
               label="Delete document"
               pendingLabel="Deleting..."
               className="justify-center border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
@@ -147,7 +147,7 @@ export default async function DocumentDetailPage({
         <div className="space-y-5">
           <Card className="space-y-5">
             <div className="space-y-2">
-              <CardTitle>Document metadata</CardTitle>
+              <CardTitle>Document details</CardTitle>
               <CardDescription>
                 Everything on this page belongs to your account and is shown only for this document.
               </CardDescription>
@@ -180,8 +180,10 @@ export default async function DocumentDetailPage({
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <p className="text-sm text-slate-400">MIME type</p>
-                  <p className="mt-2 text-base font-medium text-white">{document.mime_type}</p>
+                  <p className="text-sm text-slate-400">File type</p>
+                  <p className="mt-2 text-base font-medium text-white">
+                    {document.mime_type === "application/pdf" ? "PDF" : document.mime_type}
+                  </p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                   <p className="text-sm text-slate-400">File size</p>
@@ -199,7 +201,7 @@ export default async function DocumentDetailPage({
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <p className="text-sm text-slate-400">Extraction status</p>
+                  <p className="text-sm text-slate-400">Ready to use</p>
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <DocumentStatusBadge status={content?.extraction_status} />
                     <span className="text-sm text-slate-400">
@@ -229,9 +231,9 @@ export default async function DocumentDetailPage({
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-5">
-                <p className="text-sm font-medium text-slate-100">Saved file path</p>
+                <p className="text-sm font-medium text-slate-100">Original file</p>
                 <p className="mt-2 break-all text-sm leading-6 text-slate-400">
-                  {document.file_path}
+                  {document.file_name}
                 </p>
               </div>
 
@@ -309,7 +311,6 @@ export default async function DocumentDetailPage({
                         <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
                           Section {chunk.chunk_index + 1}
                         </span>
-                        <span>{chunk.character_count} chars</span>
                         <span>{formatDocumentDate(chunk.created_at)}</span>
                       </div>
                     </div>
@@ -342,7 +343,7 @@ export default async function DocumentDetailPage({
           <EmptyState
             eyebrow="Source sections"
             title="No source sections are available yet for this document."
-            description="Sections appear after the file finishes processing. If preparation failed or is still in progress, this list will stay empty for now."
+            description="Sections appear after the file finishes getting ready. If preparation failed or is still in progress, this list will stay empty for now."
             actionLabel="Back to documents"
             actionHref="/documents"
             secondaryActionLabel="Ask questions"

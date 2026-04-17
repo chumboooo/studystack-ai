@@ -10,8 +10,8 @@ type ReprocessDocumentButtonProps = {
 };
 
 function ReprocessDocumentSubmit({
-  label = "Reprocess",
-  pendingLabel = "Reprocessing...",
+  label = "Refresh",
+  pendingLabel = "Refreshing...",
   className,
 }: ReprocessDocumentButtonProps) {
   const { pending } = useFormStatus();

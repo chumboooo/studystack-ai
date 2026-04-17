@@ -54,7 +54,7 @@ export function Sidebar({ userEmail }: SidebarProps) {
                 <div>
                   <p className="text-sm font-medium">{item.label}</p>
                   <p className={cn("text-xs", active ? "text-slate-800" : "text-slate-500")}>
-                    Study workflow
+                    Study space
                   </p>
                 </div>
               </Link>
@@ -66,8 +66,7 @@ export function Sidebar({ userEmail }: SidebarProps) {
       <div className="mt-auto rounded-3xl border border-cyan-300/15 bg-cyan-300/[0.08] p-5">
         <p className="text-sm font-semibold text-white">{userEmail ?? "Signed in"}</p>
         <p className="mt-2 text-sm leading-6 text-slate-300">
-          Auth is live now. The rest of the dashboard remains ready for documents, storage, and AI
-          workflows next.
+          Keep your notes, questions, flashcards, and quizzes organized in one place.
         </p>
         <SignOutButton variant="ghost" className="mt-4 w-full justify-center border border-white/10" />
       </div>

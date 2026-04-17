@@ -52,7 +52,7 @@ async function generateAndStoreFlashcards({
   if (source.chunks.length === 0) {
     redirect(
       buildStudyToolRedirect("flashcards", {
-        error: "No useful chunks were available for flashcard generation.",
+        error: "StudyStack could not find enough useful material for flashcards.",
       }),
     );
   }

@@ -67,7 +67,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
           </label>
 
           <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-400">Create your account with Supabase Auth</span>
+            <span className="text-slate-400">Create your account to start studying</span>
             <Link href="/sign-in" className="text-cyan-300 transition-colors hover:text-cyan-200">
               Already have an account?
             </Link>

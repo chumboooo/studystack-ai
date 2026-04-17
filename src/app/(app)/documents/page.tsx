@@ -106,7 +106,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
             <div className="space-y-2">
               <CardTitle>Library overview</CardTitle>
               <CardDescription>
-                Keep track of what is ready to study, what is still processing, and what needs attention.
+                Keep track of what is ready to study, what is still getting ready, and what needs attention.
               </CardDescription>
             </div>
 
@@ -124,14 +124,14 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                   <p className="text-sm text-slate-400">Ready</p>
                   <p className="mt-2 text-2xl font-semibold text-white">{completedCount}</p>
-                  <p className="mt-2 text-sm text-slate-400">Ready for search and study tools.</p>
+                  <p className="mt-2 text-sm text-slate-400">Ready for questions and study tools.</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                   <p className="text-sm text-slate-400">Attention</p>
                   <p className="mt-2 text-2xl font-semibold text-white">
                     {failedCount}/{pendingCount}
                   </p>
-                  <p className="mt-2 text-sm text-slate-400">Need review / still processing.</p>
+                  <p className="mt-2 text-sm text-slate-400">Need review / still getting ready.</p>
                 </div>
               </div>
             </div>
@@ -155,12 +155,12 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
 
         {error ? (
           <Card className="space-y-3">
-            <CardTitle>Document query needs setup</CardTitle>
+            <CardTitle>Documents could not load</CardTitle>
             <CardDescription>
-              Supabase returned an error while loading documents: {error.message}
+              StudyStack could not load your documents right now: {error.message}
             </CardDescription>
             <CardDescription>
-              Run both the database SQL and the Storage bucket SQL setup, then reload this page.
+              Try refreshing the page. If this keeps happening, check that your project setup is complete.
             </CardDescription>
           </Card>
         ) : documentCount === 0 ? (
@@ -203,7 +203,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                 >
                   <option value="all">All statuses</option>
                   <option value="completed">Ready</option>
-                  <option value="pending">Processing</option>
+                  <option value="pending">Getting ready</option>
                   <option value="failed">Needs attention</option>
                 </select>
               </label>
@@ -268,7 +268,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                       />
                       <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-400">
                         <span>{document.file_name}</span>
-                        <span>{document.mime_type}</span>
+                        <span>{document.mime_type === "application/pdf" ? "PDF" : document.mime_type}</span>
                         <span>{formatFileSize(document.file_size)}</span>
                         <span>{formatDocumentDate(document.created_at)}</span>
                         <span>{document.content?.page_count ?? "?"} pages</span>
@@ -276,10 +276,10 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                       </div>
                       <p className="text-sm leading-7 text-slate-300">
                         {document.content?.extraction_status === "completed"
-                          ? "This document is ready to preview, search, and inspect in detail."
+                          ? "This document is ready to preview, search, and review."
                           : document.content?.extraction_status === "failed"
                             ? "This file could not be prepared. Review the error and try again when ready."
-                            : "Extraction is still in progress. You can keep working elsewhere and check back later."}
+                            : "This file is still getting ready. You can keep working elsewhere and check back later."}
                       </p>
                       {document.content?.extraction_status === "failed" &&
                       document.content.error_message ? (
@@ -291,8 +291,8 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
 
                     <div className="flex flex-col gap-3 xl:items-end">
                       <div className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300 xl:max-w-sm">
-                        <p className="font-medium text-slate-100">Saved file path</p>
-                        <p className="mt-1 break-all text-slate-400">{document.file_path}</p>
+                        <p className="font-medium text-slate-100">File details</p>
+                        <p className="mt-1 break-all text-slate-400">{document.file_name}</p>
                       </div>
                       <div className="flex w-full flex-col gap-3 sm:flex-row xl:max-w-sm xl:flex-col">
                         <Button href={`/documents/${document.id}`} variant="secondary" className="justify-center">
@@ -319,14 +319,14 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                         <ReprocessDocumentForm
                           action={reprocessDocumentFromList}
                           documentId={document.id}
-                          label="Reprocess document"
-                          pendingLabel="Reprocessing..."
+                          label="Refresh document"
+                          pendingLabel="Refreshing..."
                           className="justify-center border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20"
                         />
                         <DeleteDocumentForm
                           action={deleteDocumentFromList}
                           documentId={document.id}
-                          confirmMessage={`Delete "${document.title}" and all extracted data? This cannot be undone.`}
+                          confirmMessage={`Delete "${document.title}" and its saved study data? This cannot be undone.`}
                           label="Delete document"
                           pendingLabel="Deleting..."
                           className="justify-center border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"

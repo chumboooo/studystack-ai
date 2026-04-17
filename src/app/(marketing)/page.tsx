@@ -5,23 +5,23 @@ import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 
 const features = [
   {
-    title: "From PDFs to study assets",
-    description: "Turn lecture notes, textbook chapters, and slides into structured study sets.",
+    title: "Notes into study tools",
+    description: "Turn lecture notes, textbook chapters, and slides into flashcards and quizzes.",
   },
   {
-    title: "Chat grounded in your material",
-    description: "Ask questions against your uploaded docs instead of generic model memory.",
+    title: "Answers from your materials",
+    description: "Ask questions and get help based on the documents you uploaded.",
   },
   {
-    title: "Adaptive flashcards and quizzes",
-    description: "Move from passive reading to active recall with generated practice modes.",
+    title: "Practice for exams",
+    description: "Move from passive reading to active recall with focused review sessions.",
   },
 ];
 
 const workflow = [
-  "Upload a document set for a course or topic.",
-  "Open chat to clarify concepts and summarize difficult sections.",
-  "Generate flashcards and quizzes to reinforce retention.",
+  "Upload notes, slides, or readings for a class.",
+  "Ask questions when a concept feels unclear.",
+  "Generate flashcards and quizzes to prepare for exams.",
 ];
 
 export default function LandingPage() {
@@ -36,25 +36,25 @@ export default function LandingPage() {
             <Badge>Built for focused learning</Badge>
             <div className="space-y-6">
               <h1 className="max-w-4xl text-5xl font-semibold tracking-tight text-white sm:text-6xl lg:text-7xl">
-                Your study materials, transformed into an AI-powered learning system.
+                Turn your notes into a study space that helps you learn faster.
               </h1>
               <p className="max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
-                StudyStack AI helps students and self-learners organize documents, ask grounded
-                questions, and turn content into flashcards and quizzes in a single workflow.
+                Upload class notes, ask questions about the material, and create flashcards and
+                quizzes when it is time to review.
               </p>
             </div>
             <div className="flex flex-wrap gap-4">
               <Button href="/sign-up" size="lg">
-                Start building your stack
+                Start studying
               </Button>
               <Button href="/dashboard" variant="secondary" size="lg">
-                Preview the dashboard
+                Open your study space
               </Button>
             </div>
             <div className="flex flex-wrap gap-6 text-sm text-slate-400">
-              <span>No backend wired yet</span>
-              <span>Responsive MVP shell</span>
-              <span>Ready for auth and AI integrations</span>
+              <span>Organize class materials</span>
+              <span>Review with flashcards</span>
+              <span>Practice with quizzes</span>
             </div>
           </div>
 
@@ -66,7 +66,7 @@ export default function LandingPage() {
                   <p className="text-sm text-slate-400">Biology 201 final review</p>
                 </div>
                 <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs text-cyan-200">
-                  4 active modules
+                  Study-ready
                 </span>
               </div>
             </div>
@@ -113,14 +113,14 @@ export default function LandingPage() {
       <section id="features" className="mx-auto max-w-7xl px-6 py-20 sm:px-10">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-4">
-            <Badge>Product structure</Badge>
+            <Badge>Study tools</Badge>
             <h2 className="max-w-2xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-              A polished UI foundation for the full StudyStack product.
+              Everything you need to study from your own materials.
             </h2>
           </div>
           <p className="max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-            The MVP focuses on believable product structure: landing flow, auth entry points, and
-            dashboard destinations for documents, chat, flashcards, and quizzes.
+            Keep notes, questions, source references, flashcards, and quizzes together so every
+            review session has a clear next step.
           </p>
         </div>
 
@@ -140,11 +140,10 @@ export default function LandingPage() {
           <div className="space-y-4">
             <Badge>Study workflow</Badge>
             <h2 className="text-3xl font-semibold tracking-tight text-white">
-              Designed for active recall, not passive storage.
+              Designed for active recall, not passive reading.
             </h2>
             <p className="text-sm leading-7 text-slate-300 sm:text-base">
-              Every route in the app shell maps to a real product capability so future integrations
-              have a clear home from day one.
+              StudyStack helps you move from uploading notes to practicing what matters most.
             </p>
           </div>
           <div className="space-y-4">
@@ -163,16 +162,16 @@ export default function LandingPage() {
         </Card>
       </section>
 
-      <section id="pricing" className="mx-auto max-w-7xl px-6 pb-24 sm:px-10">
+      <section id="start" className="mx-auto max-w-7xl px-6 pb-24 sm:px-10">
         <Card className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-3">
-            <Badge>MVP launch</Badge>
+            <Badge>Start studying</Badge>
             <h2 className="text-3xl font-semibold tracking-tight text-white">
-              Ready for auth, storage, and AI features next.
+              Bring your next study session into focus.
             </h2>
             <p className="max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-              The UI shell is designed so Supabase, document ingestion, and model-powered study
-              tools can slot in without reworking the information architecture.
+              Upload your notes, ask questions, and turn the material into review tools when you
+              are ready to practice.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">

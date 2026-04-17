@@ -63,7 +63,7 @@ export function UploadDocumentForm({
         setStatusMessage(null);
         setErrorMessage(
           uploadError.message.includes("maximum allowed size")
-            ? "This PDF is larger than the current upload limit for your storage bucket."
+            ? "This PDF is larger than the current upload limit."
             : uploadError.message,
         );
         return;
@@ -94,10 +94,10 @@ export function UploadDocumentForm({
 
         if (!response.ok || result.ok === false) {
           setStatusMessage(null);
-          setErrorMessage(result.error ?? "The uploaded PDF could not be processed.");
+          setErrorMessage(result.error ?? "The uploaded PDF could not be prepared.");
           router.push(
             buildDocumentsUrl({
-              error: result.error ?? "The uploaded PDF could not be processed.",
+              error: result.error ?? "The uploaded PDF could not be prepared.",
             }),
           );
           router.refresh();
@@ -155,7 +155,7 @@ export function UploadDocumentForm({
           className="block w-full rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-4 text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-cyan-300 file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-950 hover:file:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-70"
         />
         <p className="text-xs text-slate-500">
-          PDF only. Larger files now upload directly to your private document storage before processing begins.
+          PDF only. Larger files can be added to your study library without leaving this page.
         </p>
       </label>
 

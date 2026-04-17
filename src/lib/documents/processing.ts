@@ -114,7 +114,7 @@ export async function runDocumentExtraction({
           }),
         );
       } catch (error) {
-        embeddingErrorMessage = `Embeddings were skipped: ${formatDocumentProcessingError(error)}`;
+        embeddingErrorMessage = `This document is ready, but some study helpers may be less accurate. ${formatDocumentProcessingError(error)}`;
       }
     }
 
@@ -138,8 +138,8 @@ export async function runDocumentExtraction({
     return {
       ok: true as const,
       message: embeddingErrorMessage
-        ? `PDF processed successfully, but semantic embeddings could not be generated. ${embeddingErrorMessage}`
-        : "PDF processed successfully.",
+        ? `PDF uploaded and ready. ${embeddingErrorMessage}`
+        : "PDF uploaded and ready to study.",
     };
   } catch (error) {
     const message = formatDocumentProcessingError(error);

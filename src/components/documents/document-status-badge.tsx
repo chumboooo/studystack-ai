@@ -11,7 +11,7 @@ const statusStyles: Record<NonNullable<DocumentStatus>, string> = {
 const statusLabels: Record<NonNullable<DocumentStatus>, string> = {
   completed: "Ready",
   failed: "Needs attention",
-  pending: "Processing",
+  pending: "Getting ready",
 };
 
 export function getDocumentStatusLabel(status: DocumentStatus) {

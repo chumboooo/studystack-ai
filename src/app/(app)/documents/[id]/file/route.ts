@@ -159,7 +159,7 @@ export async function GET(
       title: "The PDF could not be loaded",
       message:
         downloadError?.message ??
-        "The stored file is missing or could not be accessed from Supabase Storage.",
+        "The file is missing or could not be opened right now.",
       status: 404,
       backHref,
     });

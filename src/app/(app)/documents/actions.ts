@@ -252,7 +252,7 @@ async function reprocessStoredDocument({
   if (downloadError || !downloadedFile) {
     redirect(
       buildScopedRedirect(redirectTo, {
-        error: downloadError?.message ?? "The stored PDF could not be downloaded for reprocessing.",
+        error: downloadError?.message ?? "This PDF could not be opened for refresh.",
       }),
     );
   }
@@ -271,10 +271,10 @@ async function reprocessStoredDocument({
   redirect(
     buildScopedRedirect(redirectTo, result.ok
       ? {
-          message: `"${document.title}" was reprocessed successfully. ${result.message}`,
+          message: `"${document.title}" was refreshed successfully. ${result.message}`,
         }
       : {
-          error: `Reprocessing failed for "${document.title}". ${result.message}`,
+          error: `StudyStack could not refresh "${document.title}". ${result.message}`,
         }),
   );
 }
@@ -285,7 +285,7 @@ export async function reprocessDocumentFromList(formData: FormData) {
   if (!documentId) {
     redirect(
       buildRedirect({
-        error: "A document id is required to reprocess a document.",
+        error: "Choose a document to refresh.",
       }),
     );
   }
@@ -303,7 +303,7 @@ export async function reprocessDocumentFromDetail(formData: FormData) {
   if (!documentId) {
     redirect(
       buildScopedRedirect(redirectTo, {
-        error: "A document id is required to reprocess a document.",
+        error: "Choose a document to refresh.",
       }),
     );
   }
