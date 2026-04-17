@@ -47,17 +47,39 @@ The product is designed around reviewability. Answers and study tools stay conne
 5. Answers, flashcards, and quizzes are generated from those source sections.
 6. The student can revisit saved answers and open the exact source section later.
 
-## Screenshots
+## Preview
 
-Screenshots are not committed yet. Suggested files to add later:
+### Landing Page
 
-- `public/readme/landing-page.png`: homepage hero and navigation
-- `public/readme/documents-page.png`: document library with upload and file actions
-- `public/readme/chat-with-sources.png`: study chat answer with cited source cards
-- `public/readme/flashcards-page.png`: generated flashcard review interface
-- `public/readme/quizzes-page.png`: quiz-taking and results view
+![StudyStack landing page](public/readme/landing-page.png)
 
-When screenshots are added, place them in `public/readme/` and reference them here using relative Markdown image links.
+The homepage introduces StudyStack as a focused study workspace for uploading notes, asking questions, and creating review tools.
+
+### Documents
+
+![StudyStack documents page](public/readme/documents-page.png)
+
+The document library lets students upload PDFs, track ready-to-study materials, and manage preview, download, refresh, rename, and delete actions.
+
+### Study Chat
+
+![StudyStack study chat with source citations](public/readme/study-chat.png)
+
+The study chat saves source-backed answers and keeps citations visible so students can jump back to the supporting document sections.
+
+### Flashcards
+
+![StudyStack flashcard study session](public/readme/flashcards-study.png)
+
+The flashcard study page provides a spacious card-by-card review flow with progress, flip behavior, navigation, and source access.
+
+### Quizzes
+
+![StudyStack quiz study session](public/readme/quizzes-study.png)
+
+The quiz page creates a focused practice experience with progress tracking, multiple-choice answers, and source-backed review.
+
+Additional screenshots worth adding later: `/features`, `/how-it-works`, and `/get-started`.
 
 ## Getting Started
 
@@ -222,4 +244,4 @@ Potential future improvements:
 
 ## License
 
-TODO: Add a license before publishing or accepting external contributions.
+This repository is currently shared for portfolio and demonstration purposes. No license is granted for reuse, modification, or redistribution at this time.
