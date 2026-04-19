@@ -22,6 +22,47 @@ function buildQuestionTitle(question: string) {
   return `${trimmed.slice(0, 69)}...`;
 }
 
+type ThreadContextTurn = {
+  question: string;
+  answer: string | null;
+};
+
+function getCompactAnswer(answer: string | null) {
+  return (answer ?? "").replace(/\s+/g, " ").trim().slice(0, 600);
+}
+
+function buildThreadContext(turns: ThreadContextTurn[]) {
+  return turns
+    .slice()
+    .reverse()
+    .map((turn, index) => {
+      const answer = getCompactAnswer(turn.answer);
+
+      return `Turn ${index + 1}\nUser: ${turn.question}${answer ? `\nStudyStack: ${answer}` : ""}`;
+    })
+    .join("\n\n")
+    .slice(0, 2200);
+}
+
+function shouldUseThreadContext(question: string) {
+  const normalized = question.toLowerCase().trim();
+
+  return (
+    normalized.length <= 90 ||
+    /\b(it|that|this|those|these|show me|explain that|solve it|next step|example|what formula|how do i|can you)\b/.test(
+      normalized,
+    )
+  );
+}
+
+function buildRetrievalQuestion(question: string, threadContext: string) {
+  if (!threadContext || !shouldUseThreadContext(question)) {
+    return question;
+  }
+
+  return `Use this recent study-thread context to interpret the follow-up, then search for source material that answers the current question.\n\nRecent context:\n${threadContext}\n\nCurrent follow-up:\n${question}`;
+}
+
 async function requireChatUser() {
   const supabase = await createClient();
   const {
@@ -91,11 +132,22 @@ export async function submitGroundedQuestion(formData: FormData) {
   }
 
   let retrievedChunks: RetrievalChunk[];
+  const { data: priorTurns } = activeSessionId
+    ? await supabase
+        .from("chat_turns")
+        .select("question, answer")
+        .eq("session_id", activeSessionId)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(3)
+    : { data: [] };
+  const threadContext = buildThreadContext(priorTurns ?? []);
+  const retrievalQuestion = buildRetrievalQuestion(question, threadContext);
 
   try {
     retrievedChunks = await retrieveGroundingChunks({
       supabase,
-      question,
+      question: retrievalQuestion,
     });
   } catch (error) {
     redirect(
@@ -114,6 +166,7 @@ export async function submitGroundedQuestion(formData: FormData) {
       ? await generateGroundedAnswer({
           question,
           chunks: retrievedChunks,
+          threadContext,
         })
       : null;
 

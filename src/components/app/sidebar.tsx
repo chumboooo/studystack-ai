@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
 
 const appNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: "01" },
-  { href: "/documents", label: "Documents", icon: "02" },
-  { href: "/chat", label: "Chat", icon: "03" },
+  { href: "/chat", label: "Chat", icon: "02" },
+  { href: "/documents", label: "Documents", icon: "03" },
   { href: "/flashcards", label: "Flashcards", icon: "04" },
   { href: "/quizzes", label: "Quizzes", icon: "05" },
 ];

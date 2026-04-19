@@ -88,60 +88,22 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
     <div className="space-y-8">
       <PageHeader
         badge="Documents"
-        title="Organize your source material"
-        description="Upload, organize, and revisit the study materials tied to your account."
+        title="Source library"
+        description="Manage the PDFs StudyStack uses for chat, flashcards, and quizzes."
         actions={
           <>
-            <Button href="/dashboard" variant="secondary">
-              Back to dashboard
-            </Button>
             <Button href="/chat">Open chat</Button>
           </>
         }
       />
 
-      <div className="grid gap-5 xl:grid-cols-[0.75fr_1.25fr]">
-        <div className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
+        <div className="space-y-5 xl:order-2">
           <Card className="space-y-5">
             <div className="space-y-2">
-              <CardTitle>Library overview</CardTitle>
+              <CardTitle>Add a PDF</CardTitle>
               <CardDescription>
-                Keep track of what is ready to study, what is still getting ready, and what needs attention.
-              </CardDescription>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                <p className="text-sm text-slate-400">Signed-in account</p>
-                <p className="mt-2 break-all text-base font-medium text-white">{user?.email}</p>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <p className="text-sm text-slate-400">Documents in library</p>
-                  <p className="mt-2 text-3xl font-semibold text-white">{documentCount}</p>
-                  <p className="mt-2 text-sm text-slate-400">Private to your account.</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <p className="text-sm text-slate-400">Ready</p>
-                  <p className="mt-2 text-2xl font-semibold text-white">{completedCount}</p>
-                  <p className="mt-2 text-sm text-slate-400">Ready for questions and study tools.</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <p className="text-sm text-slate-400">Attention</p>
-                  <p className="mt-2 text-2xl font-semibold text-white">
-                    {failedCount}/{pendingCount}
-                  </p>
-                  <p className="mt-2 text-sm text-slate-400">Need review / still getting ready.</p>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="space-y-5">
-            <div className="space-y-2">
-              <CardTitle>Upload a PDF</CardTitle>
-              <CardDescription>
-                Add class notes, slides, or reading packets to your library. StudyStack will prepare them so you can search, review, and build study tools from them.
+                Add class notes, slides, or reading packets when you need more material in your library.
               </CardDescription>
             </div>
 
@@ -151,10 +113,34 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
 
             {user ? <UploadDocumentForm userId={user.id} bucket={uploadBucket} /> : null}
           </Card>
+
+          <Card className="space-y-4">
+            <CardTitle>Library status</CardTitle>
+            <div className="grid gap-3">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="text-sm text-slate-400">Total PDFs</p>
+                <p className="mt-1 text-2xl font-semibold text-white">{documentCount}</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-sm text-slate-400">Ready</p>
+                  <p className="mt-1 text-xl font-semibold text-white">{completedCount}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-sm text-slate-400">Getting ready</p>
+                  <p className="mt-1 text-xl font-semibold text-white">{pendingCount}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-sm text-slate-400">Needs review</p>
+                  <p className="mt-1 text-xl font-semibold text-white">{failedCount}</p>
+                </div>
+              </div>
+            </div>
+          </Card>
         </div>
 
         {error ? (
-          <Card className="space-y-3">
+          <Card className="space-y-3 xl:order-1">
             <CardTitle>Documents could not load</CardTitle>
             <CardDescription>
               StudyStack could not load your documents right now.
@@ -164,14 +150,15 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
             </CardDescription>
           </Card>
         ) : documentCount === 0 ? (
+          <div className="xl:order-1">
           <EmptyState
             eyebrow="No documents yet"
             title="Your document library is ready for the first upload."
-            description="Upload a PDF from the panel on the left to start searching, reviewing, and studying from your own materials."
+            description="Upload a PDF from the panel on this page or start from Chat to begin studying from your own materials."
             actionLabel="Upload a PDF"
             actionHref="/documents"
-            secondaryActionLabel="Back to dashboard"
-            secondaryActionHref="/dashboard"
+            secondaryActionLabel="Open chat"
+            secondaryActionHref="/chat"
             icon={
               <svg viewBox="0 0 24 24" className="h-6 w-6 fill-none stroke-current stroke-[1.8]">
                 <path d="M7 3.75h7l5 5V20.25A1.75 1.75 0 0 1 17.25 22h-10.5A1.75 1.75 0 0 1 5 20.25V5.5A1.75 1.75 0 0 1 6.75 3.75Z" />
@@ -179,8 +166,9 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
               </svg>
             }
           />
+          </div>
         ) : (
-          <Card className="space-y-5">
+          <Card className="space-y-5 xl:order-1">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <CardTitle>Documents</CardTitle>

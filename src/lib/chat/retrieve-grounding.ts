@@ -1,11 +1,14 @@
 import type { RetrievalChunk } from "@/lib/chat/grounded-answer";
+import { logRetrievalDiagnostic } from "@/lib/debug/retrieval-diagnostics";
 import { embedText, serializeEmbedding } from "@/lib/openai/embeddings";
 import type { createClient } from "@/lib/supabase/server";
 
-const INITIAL_CANDIDATE_COUNT = 18;
-const MIN_RERANK_CANDIDATES = 8;
-const FINAL_CHUNK_COUNT = 5;
+const INITIAL_CANDIDATE_COUNT = 32;
+const MIN_RERANK_CANDIDATES = 10;
+const DEFAULT_FINAL_CHUNK_COUNT = 6;
 const MIN_FINAL_SCORE = 3.2;
+const SHORT_DOCUMENT_PAGE_LIMIT = 15;
+const SHORT_DOCUMENT_CHUNK_LIMIT = 28;
 const STOP_WORDS = new Set([
   "a",
   "an",
@@ -54,6 +57,21 @@ const EXPLANATORY_PATTERNS = [
   /\b(average case|worst case|constant time|linear time|random access|insertion)\b/i,
 ];
 const COMPARISON_PATTERNS = /\b(whereas|while|however|unlike|contrast|compared|versus|vs|both|difference)\b/i;
+const TECHNICAL_DERIVATION_PATTERNS = [
+  /\b(recall|therefore|thus|hence|solving for|substitute|differentiate|integrate)\b/i,
+  /\b(derivation|derive|formula|equation|identity|theorem|rule|law|method)\b/i,
+  /\b(example|worked example|solution|given|let|where|suppose)\b/i,
+];
+const TITLE_OR_INTRO_PATTERNS = [
+  /\b(title page|table of contents|copyright|all rights reserved|author|department|course syllabus)\b/i,
+  /\b(lecture notes|prepared by|version|email|office hours)\b/i,
+];
+const FORMULA_PATTERN =
+  /([=^_]|\\frac|\\int|\\sum|\\sqrt|\b(?:sin|cos|tan|log|ln|lim|sqrt|sum|int)\b|\bd[xyz]\/d[xyz]\b|\bd\/d[xyz]\b)/i;
+const EVIDENCE_SPAN_TARGET_SIZE = 1100;
+const EVIDENCE_SPAN_MIN_SIZE = 320;
+const EVIDENCE_BREAK_PATTERN =
+  /\b(?:Recall|Therefore|Thus|Hence|Solving for|Substituting|Differentiat(?:e|ing)|Integrat(?:e|ing)|This formula|The formula|Example\s*\d*|Worked example|Solution|Definition|Theorem|Rule|Method)\b/g;
 
 type AdjacentChunkRow = {
   id: string;
@@ -61,6 +79,7 @@ type AdjacentChunkRow = {
   content: string;
   character_count: number;
   created_at: string;
+  metadata: Record<string, unknown> | null;
 };
 type HybridRetrievalChunk = RetrievalChunk & {
   keyword_rank: number;
@@ -77,15 +96,34 @@ type RawChunkRow = {
   content: string;
   character_count: number;
   created_at: string;
+  metadata: Record<string, unknown> | null;
 };
 type DocumentTitleRow = {
   id: string;
   title: string;
 };
+type DocumentCandidateRow = {
+  id: string;
+  title: string;
+};
+type DocumentContentStatsRow = {
+  document_id: string;
+  page_count: number | null;
+  chunk_count: number | null;
+  extraction_status: string;
+};
+type TitleMatchedDocument = {
+  id: string;
+  title: string;
+  score: number;
+  pageCount: number | null;
+  chunkCount: number | null;
+};
 type QueryProfile = {
   terms: string[];
   strongTerms: string[];
   aliasGroups: string[][];
+  phrases: string[];
 };
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -154,6 +192,28 @@ function extractStrongPhrases(question: string) {
   return Array.from(new Set([...extractAcronyms(question), ...phrases]));
 }
 
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/['\u2019]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractQueryPhrases(question: string) {
+  const terms = extractQueryTerms(question);
+  const phrases = new Set<string>();
+
+  for (let length = Math.min(5, terms.length); length >= 2; length -= 1) {
+    for (let index = 0; index <= terms.length - length; index += 1) {
+      phrases.add(terms.slice(index, index + length).join(" "));
+    }
+  }
+
+  return Array.from(phrases);
+}
+
 function isComparisonQuestion(question: string) {
   return /\b(compare|comparison|difference|different|versus|vs|advantages|disadvantages)\b/i.test(
     question,
@@ -162,6 +222,21 @@ function isComparisonQuestion(question: string) {
 
 function isDefinitionQuestion(question: string) {
   return /\b(what is|define|definition|explain|meaning|refers to)\b/i.test(question);
+}
+
+function allowsMultiDocumentMixing(question: string) {
+  return /\b(across|between documents|all documents|all sources|compare documents|compare sources|materials)\b/i.test(
+    question,
+  );
+}
+
+function getTitleMatchScore(title: string, profile: QueryProfile) {
+  const normalizedTitle = normalizeSearchText(title);
+  const termMatches = profile.terms.filter((term) => normalizedTitle.includes(term)).length;
+  const phraseMatches = profile.phrases.filter((phrase) => normalizedTitle.includes(phrase)).length;
+  const strongMatches = profile.aliasGroups.filter((group) => countGroupMatches(normalizedTitle, group) > 0).length;
+
+  return termMatches * 1.2 + phraseMatches * 2.5 + strongMatches * 1.6;
 }
 
 function looksShallow(content: string) {
@@ -204,6 +279,78 @@ function hasExplanatoryContent(content: string) {
   return EXPLANATORY_PATTERNS.some((pattern) => pattern.test(content));
 }
 
+function getMetadataText(metadata: RetrievalChunk["metadata"]) {
+  if (!metadata || typeof metadata !== "object") {
+    return "";
+  }
+
+  const preferredKeys = [
+    "section",
+    "section_title",
+    "heading",
+    "title",
+    "chapter",
+    "chapter_title",
+    "week",
+    "page",
+    "page_label",
+    "page_start",
+    "page_end",
+  ];
+
+  return preferredKeys
+    .map((key) => metadata[key])
+    .filter((value): value is string | number => typeof value === "string" || typeof value === "number")
+    .join(" ");
+}
+
+function normalizeMetadata(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function getHeadingText(chunk: RetrievalChunk) {
+  const firstLines = chunk.content
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 5)
+    .filter((line) => line.length <= 120 || /^\d+(?:\.\d+)*\s+/.test(line));
+
+  return normalizeSearchText([chunk.document_title, getMetadataText(chunk.metadata), ...firstLines].join(" "));
+}
+
+function countFormulaSignals(content: string) {
+  return (
+    content.match(
+      /[=^_]|\\frac|\\int|\\sum|\\sqrt|\b(?:sin|cos|tan|log|ln|lim|sqrt|sum|int)\b|\bd[xyz]\/d[xyz]\b|\bd\/d[xyz]\b/gi,
+    ) ?? []
+  ).length;
+}
+
+function hasTechnicalEvidence(content: string) {
+  return FORMULA_PATTERN.test(content) || TECHNICAL_DERIVATION_PATTERNS.some((pattern) => pattern.test(content));
+}
+
+function hasDerivationOrExample(content: string) {
+  return TECHNICAL_DERIVATION_PATTERNS.some((pattern) => pattern.test(content));
+}
+
+function looksLikeTitleOrIntro(chunk: RetrievalChunk) {
+  const normalized = chunk.content.replace(/\r/g, "").trim();
+  const lines = normalized.split("\n").filter((line) => line.trim().length > 0);
+  const sentenceCount = (normalized.match(/[.!?]/g) ?? []).length;
+  const shortLineRatio =
+    lines.length > 0 ? lines.filter((line) => line.trim().length <= 60).length / lines.length : 0;
+
+  return (
+    TITLE_OR_INTRO_PATTERNS.some((pattern) => pattern.test(normalized)) ||
+    (chunk.chunk_index <= 1 && lines.length >= 3 && shortLineRatio >= 0.65 && sentenceCount <= 2)
+  );
+}
+
 function buildQueryProfile(question: string): QueryProfile {
   const terms = extractQueryTerms(question);
   const strongTerms = extractStrongPhrases(question);
@@ -213,48 +360,56 @@ function buildQueryProfile(question: string): QueryProfile {
     terms,
     strongTerms,
     aliasGroups,
+    phrases: extractQueryPhrases(question),
   };
 }
 
 function countGroupMatches(content: string, group: string[]) {
-  return group.reduce((count, term) => (content.includes(term.toLowerCase()) ? count + 1 : count), 0);
+  return group.reduce((count, term) => (content.includes(normalizeSearchText(term)) ? count + 1 : count), 0);
 }
 
 function getOverlapMetrics(chunk: RetrievalChunk, profile: QueryProfile) {
-  const normalizedContent = chunk.content.toLowerCase();
-  const directTermMatches = profile.terms.filter((term) => normalizedContent.includes(term)).length;
-  const strongGroupHits = profile.aliasGroups.filter((group) => countGroupMatches(normalizedContent, group) > 0).length;
+  const normalizedContent = normalizeSearchText(chunk.content);
+  const headingText = getHeadingText(chunk);
+  const searchableText = `${headingText} ${normalizedContent}`;
+  const directTermMatches = profile.terms.filter((term) => searchableText.includes(term)).length;
+  const contentTermMatches = profile.terms.filter((term) => normalizedContent.includes(term)).length;
+  const strongGroupHits = profile.aliasGroups.filter((group) => countGroupMatches(searchableText, group) > 0).length;
   const strongAliasDensity = profile.aliasGroups.reduce(
-    (score, group) => score + Math.min(countGroupMatches(normalizedContent, group), 2),
+    (score, group) => score + Math.min(countGroupMatches(searchableText, group), 2),
     0,
   );
+  const phraseMatches = profile.phrases.filter((phrase) => searchableText.includes(phrase)).length;
+  const headingMatches = profile.phrases.filter((phrase) => headingText.includes(phrase)).length;
 
   return {
     directTermMatches,
+    contentTermMatches,
     strongGroupHits,
     strongAliasDensity,
+    phraseMatches,
+    headingMatches,
     hasMeaningfulOverlap:
+      phraseMatches > 0 ||
       directTermMatches >= Math.min(2, Math.max(profile.terms.length, 1)) ||
       strongGroupHits > 0,
     lacksStrongTermCoverage: profile.strongTerms.length > 0 && strongGroupHits === 0,
-    lacksAnyOverlap: directTermMatches === 0 && strongGroupHits === 0,
+    lacksAnyOverlap: directTermMatches === 0 && strongGroupHits === 0 && phraseMatches === 0,
   };
 }
 
 function scoreChunk(chunk: RankedChunkCandidate, question: string, profile: QueryProfile) {
-  const normalizedContent = chunk.content.toLowerCase();
+  const normalizedContent = normalizeSearchText(chunk.content);
   const comparisonQuestion = isComparisonQuestion(question);
   const definitionQuestion = isDefinitionQuestion(question);
-  const termCoverage =
-    profile.terms.length > 0
-      ? profile.terms.filter((term) => normalizedContent.includes(term)).length / profile.terms.length
-      : 0;
   const overlap = getOverlapMetrics(chunk, profile);
   const punctuationCount = (chunk.content.match(/[.!?]/g) ?? []).length;
+  const formulaSignals = countFormulaSignals(chunk.content);
   const semanticBonus = chunk.semantic_score > 0 ? chunk.semantic_score * 4.2 : 0;
   const keywordBonus = chunk.keyword_rank > 0 ? chunk.keyword_rank * 1.8 : 0;
-  const shallowPenalty = looksShallow(chunk.content) ? 2.5 : 0;
+  const shallowPenalty = looksShallow(chunk.content) && !hasTechnicalEvidence(chunk.content) ? 2.5 : 0;
   const introPenalty = isIntroChunk(chunk.content) ? 3 : 0;
+  const titlePenalty = looksLikeTitleOrIntro(chunk) ? 4.2 : 0;
   const topicListPenalty = hasTopicListShape(chunk.content) ? 2 : 0;
   const explanatoryBonus = hasExplanatoryContent(chunk.content)
     ? 2.8 + Math.min(chunk.content.length / 1000, 1.2)
@@ -267,15 +422,23 @@ function scoreChunk(chunk: RankedChunkCandidate, question: string, profile: Quer
   const termDensityBonus =
     profile.terms.length > 0
       ? Math.min(
-          profile.terms.reduce((score, term) => score + (normalizedContent.match(new RegExp(term, "g"))?.length ?? 0), 0) /
-            Math.max(profile.terms.length, 1),
+          profile.terms.reduce(
+            (score, term) => score + (normalizedContent.match(new RegExp(term, "g"))?.length ?? 0),
+            0,
+          ) / Math.max(profile.terms.length, 1),
           3,
         ) * 0.55
       : 0;
   const strongCoverageBonus = overlap.strongGroupHits * 2.2 + Math.min(overlap.strongAliasDensity, 3) * 0.5;
+  const phraseBonus = overlap.phraseMatches * 2.6 + overlap.headingMatches * 2.4;
+  const technicalBonus =
+    Math.min(formulaSignals, 5) * 0.7 +
+    (hasDerivationOrExample(chunk.content) ? 2.4 : 0) +
+    (hasTechnicalEvidence(chunk.content) && overlap.hasMeaningfulOverlap ? 1.8 : 0);
+  const pageMetadataBonus = getMetadataText(chunk.metadata) ? 0.5 : 0;
   const noOverlapPenalty = overlap.lacksAnyOverlap && chunk.semantic_score < 0.55 ? 5.5 : 0;
   const weakStrongCoveragePenalty =
-    overlap.lacksStrongTermCoverage && chunk.semantic_score < 0.72 ? 4 : 0;
+    overlap.lacksStrongTermCoverage && chunk.semantic_score < 0.72 && overlap.phraseMatches === 0 ? 4 : 0;
   const rootPenalty =
     chunk.root_chunk_index !== chunk.chunk_index && looksShallow(chunk.content) ? 0.4 : 0;
 
@@ -284,9 +447,12 @@ function scoreChunk(chunk: RankedChunkCandidate, question: string, profile: Quer
     chunk.root_rank * 0.6 +
     semanticBonus +
     keywordBonus +
-    termCoverage * 5 +
+    (profile.terms.length > 0 ? (overlap.directTermMatches / profile.terms.length) * 5 : 0) +
     termDensityBonus +
     strongCoverageBonus +
+    phraseBonus +
+    technicalBonus +
+    pageMetadataBonus +
     explanatoryBonus +
     punctuationBonus +
     comparisonBonus +
@@ -296,6 +462,7 @@ function scoreChunk(chunk: RankedChunkCandidate, question: string, profile: Quer
     weakStrongCoveragePenalty -
     shallowPenalty -
     introPenalty -
+    titlePenalty -
     topicListPenalty -
     rootPenalty
   );
@@ -307,6 +474,112 @@ function mergeAdjacentContent(parts: string[]) {
     .filter(Boolean)
     .join("\n\n")
     .trim();
+}
+
+function getPageSpanWidth(metadata: RetrievalChunk["metadata"]) {
+  const start = typeof metadata?.page_start === "number" ? metadata.page_start : null;
+  const end = typeof metadata?.page_end === "number" ? metadata.page_end : null;
+
+  return start !== null && end !== null ? Math.max(end - start + 1, 1) : 1;
+}
+
+function splitEvidenceUnits(content: string) {
+  const marked = content.replace(EVIDENCE_BREAK_PATTERN, (match) => `\n\n${match}`);
+
+  return marked
+    .split(/\n\s*\n/g)
+    .flatMap((segment) => {
+      const normalized = segment.replace(/\s+/g, " ").trim();
+
+      if (!normalized) {
+        return [];
+      }
+
+      if (normalized.length <= EVIDENCE_SPAN_TARGET_SIZE * 1.35) {
+        return [normalized];
+      }
+
+      return normalized
+        .split(/(?<=[.!?])\s+/g)
+        .map((part) => part.trim())
+        .filter(Boolean);
+    });
+}
+
+function splitCandidateIntoEvidenceSpans(chunk: RankedChunkCandidate): RankedChunkCandidate[] {
+  const shouldSubchunk =
+    chunk.content.length > 1500 ||
+    (getPageSpanWidth(chunk.metadata) > 1 && hasTechnicalEvidence(chunk.content));
+
+  if (!shouldSubchunk) {
+    return [chunk];
+  }
+
+  const units = splitEvidenceUnits(chunk.content);
+  const spans: RankedChunkCandidate[] = [];
+  let buffer = "";
+
+  for (const unit of units) {
+    const nextValue = buffer ? `${buffer}\n\n${unit}` : unit;
+
+    if (nextValue.length <= EVIDENCE_SPAN_TARGET_SIZE || buffer.length < EVIDENCE_SPAN_MIN_SIZE) {
+      buffer = nextValue;
+      continue;
+    }
+
+    spans.push({
+      ...chunk,
+      content: buffer,
+      character_count: buffer.length,
+      metadata: {
+        ...(chunk.metadata ?? {}),
+        evidence_span_index: spans.length,
+        evidence_span_strategy: "technical-rerank-v1",
+      },
+    });
+    buffer = unit;
+  }
+
+  if (buffer) {
+    spans.push({
+      ...chunk,
+      content: buffer,
+      character_count: buffer.length,
+      metadata: {
+        ...(chunk.metadata ?? {}),
+        evidence_span_index: spans.length,
+        evidence_span_strategy: "technical-rerank-v1",
+      },
+    });
+  }
+
+  return spans.length > 0 ? spans : [chunk];
+}
+
+function toHybridChunk(chunk: RetrievalChunk, source: "keyword" | "semantic" | "fallback"): HybridRetrievalChunk {
+  return {
+    ...chunk,
+    keyword_rank: source === "semantic" ? 0 : chunk.rank,
+    semantic_score: source === "semantic" ? chunk.rank : 0,
+  };
+}
+
+function mergeCandidate(map: Map<string, HybridRetrievalChunk>, chunk: RetrievalChunk, source: "keyword" | "semantic" | "fallback") {
+  const existing = map.get(chunk.chunk_id);
+  const next = toHybridChunk(chunk, source);
+
+  if (!existing) {
+    map.set(chunk.chunk_id, next);
+    return;
+  }
+
+  map.set(chunk.chunk_id, {
+    ...existing,
+    ...chunk,
+    rank: Math.max(existing.rank, chunk.rank),
+    keyword_rank: source === "semantic" ? existing.keyword_rank : Math.max(existing.keyword_rank, chunk.rank),
+    semantic_score: source === "semantic" ? Math.max(existing.semantic_score, chunk.rank) : existing.semantic_score,
+  });
 }
 
 async function fetchRpcCandidates({
@@ -362,6 +635,7 @@ async function fetchSemanticCandidates({
     character_count: chunk.character_count,
     created_at: chunk.created_at,
     rank: chunk.similarity,
+    metadata: normalizeMetadata(chunk.metadata),
   }));
 }
 
@@ -381,17 +655,34 @@ async function fetchIlikeFallbackCandidates({
     return [];
   }
 
-  const orClause = fallbackTerms.map((term) => `content.ilike.%${term}%`).join(",");
+  const orClause = fallbackTerms
+    .map((term) => term.replace(/[,%]/g, "").trim())
+    .filter(Boolean)
+    .map((term) => `content.ilike.%${term}%`)
+    .join(",");
+
+  if (!orClause) {
+    return [];
+  }
+
   const { data: chunkRows, error } = await supabase
     .from("document_chunks")
-    .select("id, document_id, chunk_index, content, character_count, created_at")
+    .select("id, document_id, chunk_index, content, character_count, created_at, metadata")
     .or(orClause)
-    .limit(40);
+    .limit(60);
 
   if (error || !chunkRows || chunkRows.length === 0) {
     return [];
   }
 
+  return hydrateDocumentTitles(supabase, chunkRows as RawChunkRow[], fallbackTerms);
+}
+
+async function hydrateDocumentTitles(
+  supabase: SupabaseServerClient,
+  chunkRows: RawChunkRow[],
+  fallbackTerms: string[],
+) {
   const documentIds = Array.from(new Set(chunkRows.map((row) => row.document_id)));
   const { data: documentRows } = await supabase
     .from("documents")
@@ -400,10 +691,10 @@ async function fetchIlikeFallbackCandidates({
 
   const titleMap = new Map((documentRows ?? []).map((row: DocumentTitleRow) => [row.id, row.title]));
 
-  return (chunkRows as RawChunkRow[]).map((row) => {
-    const normalizedContent = row.content.toLowerCase();
+  return chunkRows.map((row) => {
+    const normalizedContent = normalizeSearchText(row.content);
     const matchCount = fallbackTerms.reduce(
-      (score, term) => score + (normalizedContent.includes(term.toLowerCase()) ? 1 : 0),
+      (score, term) => score + (normalizedContent.includes(normalizeSearchText(term)) ? 1 : 0),
       0,
     );
 
@@ -415,21 +706,289 @@ async function fetchIlikeFallbackCandidates({
       content: row.content,
       character_count: row.character_count,
       created_at: row.created_at,
+      metadata: normalizeMetadata(row.metadata),
       rank: matchCount / Math.max(fallbackTerms.length, 1),
     } satisfies RetrievalChunk;
   });
 }
 
-export async function retrieveGroundingChunks({
+async function fetchDocumentContentStats({
+  supabase,
+  documentIds,
+}: {
+  supabase: SupabaseServerClient;
+  documentIds: string[];
+}) {
+  if (documentIds.length === 0) {
+    return new Map<string, DocumentContentStatsRow>();
+  }
+
+  const { data } = await supabase
+    .from("document_contents")
+    .select("document_id, page_count, chunk_count, extraction_status")
+    .in("document_id", documentIds);
+
+  return new Map(
+    ((data ?? []) as DocumentContentStatsRow[]).map((row) => [row.document_id, row]),
+  );
+}
+
+async function fetchTitleMatchedDocuments({
   supabase,
   question,
+  documentId,
+  profile,
 }: {
   supabase: SupabaseServerClient;
   question: string;
+  documentId?: string;
+  profile: QueryProfile;
+}): Promise<TitleMatchedDocument[]> {
+  if (allowsMultiDocumentMixing(question)) {
+    return [];
+  }
+
+  let documentsQuery = supabase
+    .from("documents")
+    .select("id, title")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (documentId) {
+    documentsQuery = documentsQuery.eq("id", documentId);
+  }
+
+  const { data: documents } = await documentsQuery;
+  const documentRows = (documents ?? []) as DocumentCandidateRow[];
+  const statsMap = await fetchDocumentContentStats({
+    supabase,
+    documentIds: documentRows.map((document) => document.id),
+  });
+
+  return documentRows
+    .map((document) => {
+      const stats = statsMap.get(document.id);
+      const score = getTitleMatchScore(document.title, profile);
+
+      return {
+        id: document.id,
+        title: document.title,
+        score,
+        pageCount: stats?.page_count ?? null,
+        chunkCount: stats?.chunk_count ?? null,
+        status: stats?.extraction_status ?? null,
+      };
+    })
+    .filter(
+      (document) =>
+        document.status === "completed" &&
+        document.score >= 2.2 &&
+        ((document.pageCount !== null && document.pageCount <= SHORT_DOCUMENT_PAGE_LIMIT) ||
+          (document.chunkCount !== null && document.chunkCount <= SHORT_DOCUMENT_CHUNK_LIMIT) ||
+          document.score >= 4),
+    )
+    .sort((left, right) => right.score - left.score)
+    .map(({ status, ...document }) => document);
+}
+
+function chooseTitleLockedDocument(matches: TitleMatchedDocument[]) {
+  const [top, second] = matches;
+
+  if (!top) {
+    return null;
+  }
+
+  if (!second || top.score >= second.score * 1.2) {
+    return top.id;
+  }
+
+  return null;
+}
+
+async function fetchShortDocumentFallbackCandidates({
+  supabase,
+  question,
+  documentId,
+  candidateDocumentIds,
+  titleMatchedDocumentIds,
+}: {
+  supabase: SupabaseServerClient;
+  question: string;
+  documentId?: string;
+  candidateDocumentIds: string[];
+  titleMatchedDocumentIds: string[];
+}) {
+  const profile = buildQueryProfile(question);
+  let documentsQuery = supabase
+    .from("documents")
+    .select("id, title")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (documentId) {
+    documentsQuery = documentsQuery.eq("id", documentId);
+  } else if (titleMatchedDocumentIds.length > 0) {
+    documentsQuery = documentsQuery.in("id", titleMatchedDocumentIds);
+  }
+
+  const { data: documents } = await documentsQuery;
+  const documentRows = (documents ?? []) as DocumentCandidateRow[];
+  const statsMap = await fetchDocumentContentStats({
+    supabase,
+    documentIds: documentRows.map((document) => document.id),
+  });
+  const candidateSet = new Set(candidateDocumentIds);
+  const titleMatchedSet = new Set(titleMatchedDocumentIds);
+  const shortDocuments = documentRows.filter((document) => {
+    const stats = statsMap.get(document.id);
+
+    if (stats?.extraction_status !== "completed") {
+      return false;
+    }
+
+    return (
+      document.id === documentId ||
+      candidateSet.has(document.id) ||
+      titleMatchedSet.has(document.id) ||
+      (stats.page_count !== null && stats.page_count <= SHORT_DOCUMENT_PAGE_LIMIT) ||
+      (stats.chunk_count !== null && stats.chunk_count <= SHORT_DOCUMENT_CHUNK_LIMIT)
+    );
+  });
+
+  if (shortDocuments.length === 0) {
+    return [];
+  }
+
+  const documentIds = shortDocuments.map((document) => document.id);
+  const titleMap = new Map(shortDocuments.map((document) => [document.id, document.title]));
+  const { data: chunkRows } = await supabase
+    .from("document_chunks")
+    .select("id, document_id, chunk_index, content, character_count, created_at, metadata")
+    .in("document_id", documentIds)
+    .order("chunk_index", { ascending: true })
+    .limit(1200);
+
+  return ((chunkRows ?? []) as RawChunkRow[])
+    .map((row) => {
+      const chunk = {
+        chunk_id: row.id,
+        document_id: row.document_id,
+        document_title: titleMap.get(row.document_id) ?? "Untitled document",
+        chunk_index: row.chunk_index,
+        content: row.content,
+        character_count: row.character_count,
+        created_at: row.created_at,
+        metadata: normalizeMetadata(row.metadata),
+        rank: 0,
+      } satisfies RetrievalChunk;
+      const overlap = getOverlapMetrics(chunk, profile);
+      const score =
+        overlap.directTermMatches * 0.18 +
+        overlap.phraseMatches * 0.28 +
+        overlap.headingMatches * 0.3 +
+        (hasTechnicalEvidence(row.content) ? 0.18 : 0) +
+        Math.min(countFormulaSignals(row.content), 4) * 0.04;
+
+      return {
+        ...chunk,
+        rank: score,
+      };
+    })
+    .filter((chunk) => {
+      const overlap = getOverlapMetrics(chunk, profile);
+
+      return (
+        chunk.document_id === documentId ||
+        overlap.hasMeaningfulOverlap ||
+        (hasTechnicalEvidence(chunk.content) && overlap.directTermMatches > 0)
+      );
+    })
+    .sort((left, right) => right.rank - left.rank)
+    .slice(0, 80);
+}
+
+function filterToDocument(chunks: RetrievalChunk[], documentId?: string) {
+  return documentId ? chunks.filter((chunk) => chunk.document_id === documentId) : chunks;
+}
+
+function selectDominantDocument({
+  scored,
+  question,
+  documentId,
+}: {
+  scored: Array<{
+    chunk: RankedChunkCandidate;
+    score: number;
+    overlap: ReturnType<typeof getOverlapMetrics>;
+  }>;
+  question: string;
+  documentId?: string;
+}) {
+  if (documentId || allowsMultiDocumentMixing(question) || scored.length === 0) {
+    return documentId ?? null;
+  }
+
+  const documentScores = new Map<string, { score: number; strongEvidence: boolean }>();
+
+  for (const entry of scored.slice(0, 12)) {
+    const existing = documentScores.get(entry.chunk.document_id) ?? { score: 0, strongEvidence: false };
+    existing.score += entry.score;
+    existing.strongEvidence =
+      existing.strongEvidence ||
+      entry.overlap.hasMeaningfulOverlap ||
+      (hasTechnicalEvidence(entry.chunk.content) && entry.overlap.directTermMatches > 0);
+    documentScores.set(entry.chunk.document_id, existing);
+  }
+
+  const sorted = Array.from(documentScores.entries()).sort((left, right) => right[1].score - left[1].score);
+  const [top, second] = sorted;
+
+  if (!top) {
+    return null;
+  }
+
+  if (!second || (top[1].strongEvidence && top[1].score >= second[1].score * 1.18)) {
+    return top[0];
+  }
+
+  return null;
+}
+
+export async function retrieveGroundingChunks({
+  supabase,
+  question,
+  documentId,
+  matchCount,
+}: {
+  supabase: SupabaseServerClient;
+  question: string;
+  documentId?: string;
+  matchCount?: number;
 }) {
   let lastError: Error | null = null;
+  const finalCount = matchCount ?? DEFAULT_FINAL_CHUNK_COUNT;
   const profile = buildQueryProfile(question);
+  const titleMatchedDocuments = await fetchTitleMatchedDocuments({
+    supabase,
+    question,
+    documentId,
+    profile,
+  });
+  const titleLockedDocumentId = documentId ?? chooseTitleLockedDocument(titleMatchedDocuments) ?? undefined;
   const mergedCandidates = new Map<string, HybridRetrievalChunk>();
+
+  logRetrievalDiagnostic("retrieval.started", {
+    questionLength: question.length,
+    requestedDocumentId: documentId ?? null,
+    titleLockedDocumentId: titleLockedDocumentId ?? null,
+    titleMatches: titleMatchedDocuments.map((document) => ({
+      id: document.id,
+      title: document.title,
+      score: document.score,
+      pageCount: document.pageCount,
+      chunkCount: document.chunkCount,
+    })),
+  });
 
   for (const candidateQuery of buildQueryCandidates(question)) {
     const { data, error } = await fetchRpcCandidates({
@@ -442,26 +1001,8 @@ export async function retrieveGroundingChunks({
       continue;
     }
 
-    for (const chunk of data) {
-      const existing = mergedCandidates.get(chunk.chunk_id);
-      const keywordRank = chunk.rank;
-
-      if (!existing) {
-        mergedCandidates.set(chunk.chunk_id, {
-          ...chunk,
-          rank: keywordRank,
-          keyword_rank: keywordRank,
-          semantic_score: 0,
-        });
-        continue;
-      }
-
-      mergedCandidates.set(chunk.chunk_id, {
-        ...existing,
-        ...chunk,
-        rank: Math.max(existing.rank, keywordRank),
-        keyword_rank: Math.max(existing.keyword_rank, keywordRank),
-      });
+    for (const chunk of filterToDocument(data, titleLockedDocumentId)) {
+      mergeCandidate(mergedCandidates, chunk, "keyword");
     }
   }
 
@@ -471,26 +1012,8 @@ export async function retrieveGroundingChunks({
       question,
     });
 
-    for (const chunk of semanticCandidates) {
-      const existing = mergedCandidates.get(chunk.chunk_id);
-      const semanticScore = chunk.rank;
-
-      if (!existing) {
-        mergedCandidates.set(chunk.chunk_id, {
-          ...chunk,
-          rank: semanticScore,
-          keyword_rank: 0,
-          semantic_score: semanticScore,
-        });
-        continue;
-      }
-
-      mergedCandidates.set(chunk.chunk_id, {
-        ...existing,
-        ...chunk,
-        rank: Math.max(existing.rank, semanticScore),
-        semantic_score: Math.max(existing.semantic_score, semanticScore),
-      });
+    for (const chunk of filterToDocument(semanticCandidates, titleLockedDocumentId)) {
+      mergeCandidate(mergedCandidates, chunk, "semantic");
     }
   } catch (error) {
     if (!lastError) {
@@ -504,30 +1027,42 @@ export async function retrieveGroundingChunks({
       question,
     });
 
-    for (const chunk of fallbackCandidates) {
-      const existing = mergedCandidates.get(chunk.chunk_id);
-      const keywordRank = chunk.rank;
-
-      if (!existing) {
-        mergedCandidates.set(chunk.chunk_id, {
-          ...chunk,
-          rank: keywordRank,
-          keyword_rank: keywordRank,
-          semantic_score: 0,
-        });
-        continue;
-      }
-
-      mergedCandidates.set(chunk.chunk_id, {
-        ...existing,
-        ...chunk,
-        rank: Math.max(existing.rank, keywordRank),
-        keyword_rank: Math.max(existing.keyword_rank, keywordRank),
-      });
+    for (const chunk of filterToDocument(fallbackCandidates, titleLockedDocumentId)) {
+      mergeCandidate(mergedCandidates, chunk, "fallback");
     }
   }
 
-  const candidates = Array.from(mergedCandidates.values());
+  const shortFallbackCandidates = await fetchShortDocumentFallbackCandidates({
+    supabase,
+    question,
+    documentId: titleLockedDocumentId,
+    candidateDocumentIds: Array.from(new Set(Array.from(mergedCandidates.values()).map((chunk) => chunk.document_id))),
+    titleMatchedDocumentIds: titleMatchedDocuments.map((document) => document.id),
+  });
+
+  for (const chunk of shortFallbackCandidates) {
+    mergeCandidate(mergedCandidates, chunk, "fallback");
+  }
+
+  const candidateStats = await fetchDocumentContentStats({
+    supabase,
+    documentIds: Array.from(new Set(Array.from(mergedCandidates.values()).map((chunk) => chunk.document_id))),
+  });
+  const candidates = Array.from(mergedCandidates.values()).filter((chunk) => {
+    const stats = candidateStats.get(chunk.document_id);
+
+    return stats?.extraction_status === "completed" || chunk.document_id === titleLockedDocumentId;
+  });
+
+  logRetrievalDiagnostic("retrieval.candidates", {
+    requestedDocumentId: documentId ?? null,
+    titleLockedDocumentId: titleLockedDocumentId ?? null,
+    mergedCandidateCount: mergedCandidates.size,
+    completedCandidateCount: candidates.length,
+    candidateDocuments: Array.from(
+      new Set(candidates.map((chunk) => `${chunk.document_title}:${chunk.document_id}`)),
+    ).slice(0, 12),
+  });
 
   if (lastError && candidates.length === 0) {
     throw lastError;
@@ -540,18 +1075,24 @@ export async function retrieveGroundingChunks({
   const adjacencyTargets = candidates
     .filter(
       (chunk, index) =>
-        index < 10 ||
+        index < 16 ||
         looksShallow(chunk.content) ||
         isIntroChunk(chunk.content) ||
         hasTopicListShape(chunk.content) ||
+        hasTechnicalEvidence(chunk.content) ||
         isComparisonQuestion(question),
     )
-    .map((chunk) => ({
-      documentId: chunk.document_id,
-      indices: [chunk.chunk_index - 2, chunk.chunk_index - 1, chunk.chunk_index, chunk.chunk_index + 1, chunk.chunk_index + 2].filter(
-        (value) => value >= 0,
-      ),
-    }));
+    .map((chunk) => {
+      const technicalWindow = hasTechnicalEvidence(chunk.content) || hasDerivationOrExample(chunk.content);
+      const radius = technicalWindow ? 2 : 1;
+      const indices = Array.from({ length: radius * 2 + 1 }, (_, offset) => chunk.chunk_index - radius + offset)
+        .filter((value) => value >= 0);
+
+      return {
+        documentId: chunk.document_id,
+        indices,
+      };
+    });
 
   const uniqueTargets = Array.from(
     new Map(
@@ -568,12 +1109,19 @@ export async function retrieveGroundingChunks({
     uniqueTargets.map(async (target) => {
       const { data: adjacentRows } = await supabase
         .from("document_chunks")
-        .select("id, chunk_index, content, character_count, created_at")
+        .select("id, chunk_index, content, character_count, created_at, metadata")
         .eq("document_id", target.documentId)
         .in("chunk_index", target.indices);
 
       for (const row of adjacentRows ?? []) {
-        adjacencyMap.set(`${target.documentId}:${row.chunk_index}`, row);
+        adjacencyMap.set(`${target.documentId}:${row.chunk_index}`, {
+          id: row.id,
+          chunk_index: row.chunk_index,
+          content: row.content,
+          character_count: row.character_count,
+          created_at: row.created_at,
+          metadata: normalizeMetadata(row.metadata),
+        });
       }
     }),
   );
@@ -583,9 +1131,11 @@ export async function retrieveGroundingChunks({
       looksShallow(chunk.content) ||
       isIntroChunk(chunk.content) ||
       hasTopicListShape(chunk.content) ||
+      hasTechnicalEvidence(chunk.content) ||
       isComparisonQuestion(question);
+    const radius = hasTechnicalEvidence(chunk.content) || hasDerivationOrExample(chunk.content) ? 2 : 1;
     const nearbyIndices = shouldExpand
-      ? [chunk.chunk_index - 1, chunk.chunk_index, chunk.chunk_index + 1, chunk.chunk_index + 2].filter(
+      ? Array.from({ length: radius * 2 + 1 }, (_, offset) => chunk.chunk_index - radius + offset).filter(
           (index) => index >= 0,
         )
       : [chunk.chunk_index];
@@ -594,7 +1144,7 @@ export async function retrieveGroundingChunks({
       .map((index) => adjacencyMap.get(`${chunk.document_id}:${index}`))
       .filter((row): row is AdjacentChunkRow => Boolean(row))
       .map((row) => {
-        const contextualParts = [row.chunk_index - 1, row.chunk_index, row.chunk_index + 1]
+        const contextualParts = Array.from({ length: radius * 2 + 1 }, (_, offset) => row.chunk_index - radius + offset)
           .filter((index) => index >= 0)
           .map((index) => adjacencyMap.get(`${chunk.document_id}:${index}`)?.content ?? "");
 
@@ -605,6 +1155,7 @@ export async function retrieveGroundingChunks({
           chunk_index: row.chunk_index,
           character_count: row.character_count,
           created_at: row.created_at,
+          metadata: row.metadata,
           rank: chunk.rank,
           keyword_rank: chunk.keyword_rank,
           semantic_score: chunk.semantic_score,
@@ -625,9 +1176,25 @@ export async function retrieveGroundingChunks({
         ];
   });
 
-  return expandedCandidates
+  const evidenceCandidates = expandedCandidates.flatMap(splitCandidateIntoEvidenceSpans);
+
+  logRetrievalDiagnostic("retrieval.evidence_spans", {
+    expandedCandidateCount: expandedCandidates.length,
+    evidenceCandidateCount: evidenceCandidates.length,
+    subchunkedCount: evidenceCandidates.filter((chunk) => chunk.metadata?.evidence_span_strategy).length,
+  });
+
+  const scored = evidenceCandidates
     .reduce<RankedChunkCandidate[]>((unique, chunk) => {
-      if (!unique.some((entry) => entry.chunk_id === chunk.chunk_id)) {
+      const uniqueKey = `${chunk.chunk_id}:${chunk.metadata?.evidence_span_index ?? "full"}:${chunk.content.slice(0, 80)}`;
+
+      if (
+        !unique.some(
+          (entry) =>
+            `${entry.chunk_id}:${entry.metadata?.evidence_span_index ?? "full"}:${entry.content.slice(0, 80)}` ===
+            uniqueKey,
+        )
+      ) {
         unique.push(chunk);
       }
 
@@ -643,24 +1210,50 @@ export async function retrieveGroundingChunks({
         return false;
       }
 
-      if (overlap.lacksAnyOverlap && chunk.semantic_score < 0.55) {
+      if (overlap.lacksAnyOverlap && chunk.semantic_score < 0.55 && !hasTechnicalEvidence(chunk.content)) {
         return false;
       }
 
       if (
         overlap.lacksStrongTermCoverage &&
         chunk.semantic_score < 0.72 &&
-        !hasExplanatoryContent(chunk.content)
+        !hasExplanatoryContent(chunk.content) &&
+        !hasTechnicalEvidence(chunk.content)
       ) {
         return false;
       }
 
       return true;
     })
-    .sort((left, right) => right.score - left.score)
-    .slice(0, FINAL_CHUNK_COUNT)
-    .map((entry) => ({
-      ...entry.chunk,
-      rank: entry.score,
-    }));
+    .sort((left, right) => right.score - left.score);
+
+  const dominantDocumentId = selectDominantDocument({
+    scored,
+    question,
+    documentId: titleLockedDocumentId,
+  });
+  const sourceFiltered = dominantDocumentId
+    ? scored.filter((entry) => entry.chunk.document_id === dominantDocumentId)
+    : scored;
+  const finalSources = sourceFiltered.slice(0, finalCount).map((entry) => ({
+    ...entry.chunk,
+    rank: entry.score,
+  }));
+
+  logRetrievalDiagnostic("retrieval.final_sources", {
+    requestedDocumentId: documentId ?? null,
+    titleLockedDocumentId: titleLockedDocumentId ?? null,
+    dominantDocumentId,
+    finalCount: finalSources.length,
+    sources: finalSources.map((chunk) => ({
+      documentId: chunk.document_id,
+      documentTitle: chunk.document_title,
+      chunkIndex: chunk.chunk_index,
+      rank: Number(chunk.rank.toFixed(3)),
+      pageStart: chunk.metadata?.page_start ?? null,
+      pageEnd: chunk.metadata?.page_end ?? null,
+    })),
+  });
+
+  return finalSources;
 }

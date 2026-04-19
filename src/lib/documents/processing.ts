@@ -1,6 +1,7 @@
 import { embedTexts, serializeEmbedding } from "@/lib/openai/embeddings";
 import { chunkExtractedText } from "@/lib/pdf/chunk-text";
 import { extractPdfText } from "@/lib/pdf/extract-text";
+import { logRetrievalDiagnostic } from "@/lib/debug/retrieval-diagnostics";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 
 export const DEFAULT_DOCUMENTS_BUCKET = "documents";
@@ -61,8 +62,22 @@ export async function runDocumentExtraction({
 
   try {
     const extraction = await extractPdfText(sourceBuffer);
-    const chunks = chunkExtractedText(extraction.rawText);
+    const chunks = chunkExtractedText(extraction.rawText, extraction.pages);
     let embeddingErrorMessage: string | null = null;
+
+    logRetrievalDiagnostic("pdf.extracted", {
+      documentId,
+      pageCount: extraction.pageCount,
+      nonEmptyPages: extraction.pages.filter((page) => page.text.trim().length > 0).length,
+      rawTextLength: extraction.rawText.length,
+      chunkCount: chunks.length,
+      chunkPageSpans: chunks.map((chunk) => ({
+        index: chunk.chunkIndex,
+        characters: chunk.characterCount,
+        pageStart: chunk.metadata.page_start ?? null,
+        pageEnd: chunk.metadata.page_end ?? null,
+      })),
+    });
 
     if (chunks.length > 0) {
       const { data: insertedChunks, error: chunkInsertError } = await supabase
@@ -74,9 +89,7 @@ export async function runDocumentExtraction({
             chunk_index: chunk.chunkIndex,
             content: chunk.content,
             character_count: chunk.characterCount,
-            metadata: {
-              strategy: "paragraph-balanced-v1",
-            },
+            metadata: chunk.metadata,
           })),
         )
         .select("id, chunk_index, content");
@@ -84,6 +97,13 @@ export async function runDocumentExtraction({
       if (chunkInsertError) {
         throw chunkInsertError;
       }
+
+      logRetrievalDiagnostic("pdf.chunks_stored", {
+        documentId,
+        insertedChunkCount: insertedChunks.length,
+        firstChunkIndex: insertedChunks[0]?.chunk_index ?? null,
+        lastChunkIndex: insertedChunks.at(-1)?.chunk_index ?? null,
+      });
 
       try {
         const embeddings = await embedTexts(insertedChunks.map((chunk) => chunk.content));
@@ -101,7 +121,7 @@ export async function runDocumentExtraction({
               .update({
                 embedding: serializeEmbedding(embedding),
                 metadata: {
-                  strategy: "paragraph-balanced-v1",
+                  ...(chunks[index]?.metadata ?? { strategy: "page-aware-v1" }),
                   embedding_model: process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small",
                 },
               })

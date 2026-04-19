@@ -36,6 +36,21 @@ const STOP_WORDS = new Set([
   "on",
   "or",
   "please",
+  "origin",
+  "origins",
+  "derive",
+  "derivation",
+  "formula",
+  "method",
+  "rule",
+  "use",
+  "used",
+  "using",
+  "when",
+  "why",
+  "relationship",
+  "represents",
+  "means",
   "some",
   "teach",
   "tell",
@@ -64,6 +79,19 @@ const EXPLANATORY_PATTERNS = [
 ];
 const COMPARISON_PATTERNS =
   /\b(compare|comparison|difference|different|versus|vs|whereas|while|however|unlike|contrast)\b/i;
+const TECHNICAL_DERIVATION_PATTERNS = [
+  /\b(recall|therefore|thus|hence|solving for|substitute|differentiate|integrate)\b/i,
+  /\b(derivation|derive|formula|equation|identity|theorem|rule|law|method)\b/i,
+  /\b(example|worked example|solution|given|let|where|suppose)\b/i,
+];
+const TITLE_OR_INTRO_PATTERNS = [
+  /\b(title page|table of contents|copyright|all rights reserved|author|department|course syllabus)\b/i,
+  /\b(lecture notes|prepared by|version|email|office hours)\b/i,
+];
+const FORMULA_PATTERN =
+  /([=^_]|\\frac|\\int|\\sum|\\sqrt|\b(?:sin|cos|tan|log|ln|lim|sqrt|sum|int)\b|\bd[xyz]\/d[xyz]\b|\bd\/d[xyz]\b)/i;
+const TECHNICAL_STUDY_ITEM_PATTERN =
+  /\b(?:formula|equation|derive|derivation|origin|rule|method|example|solve|use|apply|relationship|represents|means)\b/i;
 const OFF_TOPIC_STUDY_MATERIAL_PATTERNS = [
   /\b(textbook|book design|teaching style|learning style|pedagogy|pedagogical)\b/i,
   /\b(student-centered|instructor|curriculum|course design|author|preface)\b/i,
@@ -278,6 +306,35 @@ function hasExplanatoryContent(content: string) {
   return EXPLANATORY_PATTERNS.some((pattern) => pattern.test(content));
 }
 
+function countFormulaSignals(content: string) {
+  return (
+    content.match(
+      /[=^_]|\\frac|\\int|\\sum|\\sqrt|\b(?:sin|cos|tan|log|ln|lim|sqrt|sum|int)\b|\bd[xyz]\/d[xyz]\b|\bd\/d[xyz]\b/gi,
+    ) ?? []
+  ).length;
+}
+
+function hasTechnicalEvidence(content: string) {
+  return FORMULA_PATTERN.test(content) || TECHNICAL_DERIVATION_PATTERNS.some((pattern) => pattern.test(content));
+}
+
+function hasDerivationOrExample(content: string) {
+  return TECHNICAL_DERIVATION_PATTERNS.some((pattern) => pattern.test(content));
+}
+
+function looksLikeTitleOrIntro(chunk: StudySourceChunk) {
+  const normalized = chunk.content.replace(/\r/g, "").trim();
+  const lines = normalized.split("\n").filter((line) => line.trim().length > 0);
+  const sentenceCount = (normalized.match(/[.!?]/g) ?? []).length;
+  const shortLineRatio =
+    lines.length > 0 ? lines.filter((line) => line.trim().length <= 60).length / lines.length : 0;
+
+  return (
+    TITLE_OR_INTRO_PATTERNS.some((pattern) => pattern.test(normalized)) ||
+    (chunk.chunk_index <= 1 && lines.length >= 3 && shortLineRatio >= 0.65 && sentenceCount <= 2)
+  );
+}
+
 function isOffTopicStudyMaterial(content: string, profile: TopicProfile) {
   return (
     !profile.asksForStudyMaterial &&
@@ -323,12 +380,18 @@ export function scoreStudyChunk({
   const comparisonBonus = COMPARISON_PATTERNS.test(queryText) && COMPARISON_PATTERNS.test(chunk.content) ? 1.6 : 0;
   const introPenalty = INTRO_PATTERNS.some((pattern) => pattern.test(chunk.content)) ? 3 : 0;
   const listPenalty = hasTopicListShape(chunk.content) ? 2.2 : 0;
-  const shallowPenalty = looksShallow(chunk.content) ? 2.4 : 0;
+  const shallowPenalty = looksShallow(chunk.content) && !hasTechnicalEvidence(chunk.content) ? 2.4 : 0;
   const phraseBonus = topicEvidence.phraseMatches * 3.2 + topicEvidence.headingMatches * 2.2;
   const headingBonus = topicEvidence.headingMatches > 0 ? 2.4 : 0;
   const contentMatchBonus = topicEvidence.contentTermMatches * 1.1;
+  const technicalBonus =
+    Math.min(countFormulaSignals(chunk.content), 5) * 0.7 +
+    (hasDerivationOrExample(chunk.content) ? 2.4 : 0) +
+    (hasTechnicalEvidence(chunk.content) && topicEvidence.hasTopicEvidence ? 1.8 : 0);
+  const titlePenalty = looksLikeTitleOrIntro(chunk) ? 4.4 : 0;
   const offTopicPenalty = isOffTopicStudyMaterial(chunk.content, profile) ? 8 : 0;
-  const weakTopicPenalty = !topicEvidence.hasTopicEvidence && chunk.rank < 0.72 ? 5 : 0;
+  const weakTopicPenalty =
+    !topicEvidence.hasTopicEvidence && chunk.rank < 0.72 && !hasTechnicalEvidence(chunk.content) ? 5 : 0;
 
   return (
     chunk.rank * 1.6 +
@@ -337,11 +400,13 @@ export function scoreStudyChunk({
     phraseBonus +
     headingBonus +
     contentMatchBonus +
+    technicalBonus +
     explanatoryBonus +
     Math.min(punctuationCount / 5, 1.1) +
     comparisonBonus -
     offTopicPenalty -
     weakTopicPenalty -
+    titlePenalty -
     introPenalty -
     listPenalty -
     shallowPenalty
@@ -359,7 +424,12 @@ export function selectStudyChunks({
 }) {
   const profile = buildTopicProfile(queryText);
   const deduped = Array.from(
-    new Map(chunks.map((chunk) => [chunk.chunk_id, chunk])).values(),
+    new Map(
+      chunks.map((chunk) => [
+        `${chunk.chunk_id}:${chunk.metadata?.evidence_span_index ?? "full"}:${chunk.content.slice(0, 80)}`,
+        chunk,
+      ]),
+    ).values(),
   );
 
   const ranked = deduped
@@ -381,6 +451,7 @@ export function selectStudyChunks({
             !entry.offTopic &&
             (entry.topicEvidence.hasTopicEvidence ||
               entry.chunk.rank >= 0.72 ||
+              (hasTechnicalEvidence(entry.chunk.content) && entry.topicEvidence.contentTermMatches > 0) ||
               index < Math.max(2, Math.ceil(limit / 3))) &&
             (entry.score >= 1.4 || index < Math.max(2, limit)),
         )
@@ -416,7 +487,10 @@ export function isGeneratedStudyItemRelevant({
   } satisfies StudySourceChunk;
   const sourceEvidence = getTopicEvidence(sourceAsChunk, profile);
 
-  if (!sourceEvidence.hasTopicEvidence) {
+  if (
+    !sourceEvidence.hasTopicEvidence &&
+    !(hasTechnicalEvidence(sourceContent) && sourceEvidence.contentTermMatches > 0)
+  ) {
     return false;
   }
 
@@ -436,6 +510,15 @@ export function isGeneratedStudyItemRelevant({
   const supportedTermCount = itemTerms.filter((term) =>
     getTermVariants(term).some((variant) => sourceText.includes(variant)),
   ).length;
+  const sourceIsTechnical = hasTechnicalEvidence(sourceContent);
+
+  if (
+    sourceIsTechnical &&
+    TECHNICAL_STUDY_ITEM_PATTERN.test(itemText) &&
+    (sourceEvidence.hasTopicEvidence || sourceEvidence.contentTermMatches > 0)
+  ) {
+    return supportedTermCount >= 1 || supportedTermCount / itemTerms.length >= 0.18;
+  }
 
   return supportedTermCount >= Math.min(3, itemTerms.length) || supportedTermCount / itemTerms.length >= 0.28;
 }

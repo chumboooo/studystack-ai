@@ -28,7 +28,7 @@ export default async function QuizStudyPage({ params, searchParams }: QuizStudyP
 
   const { data: set } = await supabase
     .from("quiz_sets")
-    .select("id, title, created_at, updated_at")
+    .select("id, title, source_mode, created_at, updated_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -89,10 +89,12 @@ export default async function QuizStudyPage({ params, searchParams }: QuizStudyP
       ) : (
         <>
           <div className="flex flex-wrap justify-end gap-3">
-            <form action={regenerateQuizSet}>
-              <input type="hidden" name="setId" value={set.id} />
-              <ActionSubmitButton label="Regenerate quiz" pendingLabel="Regenerating..." />
-            </form>
+            {set.source_mode === "manual" ? null : (
+              <form action={regenerateQuizSet}>
+                <input type="hidden" name="setId" value={set.id} />
+                <ActionSubmitButton label="Regenerate quiz" pendingLabel="Regenerating..." />
+              </form>
+            )}
             <form action={deleteQuizSet}>
               <input type="hidden" name="setId" value={set.id} />
               <ActionSubmitButton

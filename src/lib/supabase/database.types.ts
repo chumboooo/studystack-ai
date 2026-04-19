@@ -9,7 +9,7 @@ export type Database = {
           document_id: string | null;
           id: string;
           query_text: string | null;
-          source_mode: "document" | "retrieval";
+          source_mode: "document" | "manual" | "retrieval";
           title: string;
           updated_at: string;
           user_id: string;
@@ -19,7 +19,7 @@ export type Database = {
           document_id?: string | null;
           id?: string;
           query_text?: string | null;
-          source_mode: "document" | "retrieval";
+          source_mode: "document" | "manual" | "retrieval";
           title: string;
           updated_at?: string;
           user_id: string;
@@ -29,7 +29,7 @@ export type Database = {
           document_id?: string | null;
           id?: string;
           query_text?: string | null;
-          source_mode?: "document" | "retrieval";
+          source_mode?: "document" | "manual" | "retrieval";
           title?: string;
           updated_at?: string;
           user_id?: string;
@@ -44,9 +44,9 @@ export type Database = {
           prompt: string;
           set_id: string;
           source_chunk_id: string | null;
-          source_chunk_index: number;
+          source_chunk_index: number | null;
           source_document_id: string | null;
-          source_document_title: string;
+          source_document_title: string | null;
           user_id: string;
         };
         Insert: {
@@ -56,9 +56,9 @@ export type Database = {
           prompt: string;
           set_id: string;
           source_chunk_id?: string | null;
-          source_chunk_index: number;
+          source_chunk_index?: number | null;
           source_document_id?: string | null;
-          source_document_title: string;
+          source_document_title?: string | null;
           user_id: string;
         };
         Update: {
@@ -68,9 +68,9 @@ export type Database = {
           prompt?: string;
           set_id?: string;
           source_chunk_id?: string | null;
-          source_chunk_index?: number;
+          source_chunk_index?: number | null;
           source_document_id?: string | null;
-          source_document_title?: string;
+          source_document_title?: string | null;
           user_id?: string;
         };
         Relationships: [];
@@ -85,9 +85,9 @@ export type Database = {
           question: string;
           set_id: string;
           source_chunk_id: string | null;
-          source_chunk_index: number;
+          source_chunk_index: number | null;
           source_document_id: string | null;
-          source_document_title: string;
+          source_document_title: string | null;
           user_id: string;
         };
         Insert: {
@@ -99,9 +99,9 @@ export type Database = {
           question: string;
           set_id: string;
           source_chunk_id?: string | null;
-          source_chunk_index: number;
+          source_chunk_index?: number | null;
           source_document_id?: string | null;
-          source_document_title: string;
+          source_document_title?: string | null;
           user_id: string;
         };
         Update: {
@@ -113,9 +113,9 @@ export type Database = {
           question?: string;
           set_id?: string;
           source_chunk_id?: string | null;
-          source_chunk_index?: number;
+          source_chunk_index?: number | null;
           source_document_id?: string | null;
-          source_document_title?: string;
+          source_document_title?: string | null;
           user_id?: string;
         };
         Relationships: [];
@@ -126,7 +126,7 @@ export type Database = {
           document_id: string | null;
           id: string;
           query_text: string | null;
-          source_mode: "document" | "retrieval";
+          source_mode: "document" | "manual" | "retrieval";
           title: string;
           updated_at: string;
           user_id: string;
@@ -136,7 +136,7 @@ export type Database = {
           document_id?: string | null;
           id?: string;
           query_text?: string | null;
-          source_mode: "document" | "retrieval";
+          source_mode: "document" | "manual" | "retrieval";
           title: string;
           updated_at?: string;
           user_id: string;
@@ -146,7 +146,40 @@ export type Database = {
           document_id?: string | null;
           id?: string;
           query_text?: string | null;
-          source_mode?: "document" | "retrieval";
+          source_mode?: "document" | "manual" | "retrieval";
+          title?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      study_planner_entries: {
+        Row: {
+          created_at: string;
+          entry_date: string;
+          entry_type: "exam_prep" | "quiz_review" | "reminder" | "study_session";
+          id: string;
+          note: string | null;
+          title: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          entry_date: string;
+          entry_type?: "exam_prep" | "quiz_review" | "reminder" | "study_session";
+          id?: string;
+          note?: string | null;
+          title: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          entry_date?: string;
+          entry_type?: "exam_prep" | "quiz_review" | "reminder" | "study_session";
+          id?: string;
+          note?: string | null;
           title?: string;
           updated_at?: string;
           user_id?: string;

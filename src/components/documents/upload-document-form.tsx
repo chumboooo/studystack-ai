@@ -12,16 +12,18 @@ import {
   sanitizeUploadFileName,
 } from "@/lib/documents/upload-validation";
 
-function buildDocumentsUrl(params: Record<string, string>) {
-  return `/documents?${new URLSearchParams(params).toString()}`;
+function buildUploadResultUrl(pathname: string, params: Record<string, string>) {
+  return `${pathname}?${new URLSearchParams(params).toString()}`;
 }
 
 export function UploadDocumentForm({
   userId,
   bucket,
+  redirectPath = "/documents",
 }: {
   userId: string;
   bucket: string;
+  redirectPath?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -101,7 +103,7 @@ export function UploadDocumentForm({
           setStatusMessage(null);
           setErrorMessage(result.error ?? "The uploaded PDF could not be prepared.");
           router.push(
-            buildDocumentsUrl({
+            buildUploadResultUrl(redirectPath, {
               error: result.error ?? "The uploaded PDF could not be prepared.",
             }),
           );
@@ -120,7 +122,7 @@ export function UploadDocumentForm({
         setStatusMessage(null);
         setErrorMessage(null);
         router.push(
-          buildDocumentsUrl({
+          buildUploadResultUrl(redirectPath, {
             message: result.message ?? "PDF uploaded successfully.",
           }),
         );

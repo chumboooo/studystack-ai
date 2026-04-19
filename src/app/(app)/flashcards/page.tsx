@@ -1,6 +1,10 @@
-import { generateFlashcardSet } from "@/app/(app)/flashcards/actions";
-import { PageHeader } from "@/components/app/page-header";
-import { ActionSubmitButton } from "@/components/study-tools/action-submit-button";
+import {
+  createManualFlashcardSet,
+  deleteFlashcardSet,
+  generateFlashcardSet,
+} from "@/app/(app)/flashcards/actions";
+import { ManualFlashcardForm } from "@/components/flashcards/manual-flashcard-form";
+import { ActionSubmitButton, ConfirmActionSubmitButton } from "@/components/study-tools/action-submit-button";
 import { Button } from "@/components/ui/button";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
@@ -15,6 +19,10 @@ type FlashcardsPageProps = {
   }>;
 };
 
+function getSetModeLabel(sourceMode: string) {
+  return sourceMode === "manual" ? "Manual" : "From notes";
+}
+
 export default async function FlashcardsPage({ searchParams }: FlashcardsPageProps) {
   const [{ error: pageError, message }, supabase] = await Promise.all([
     searchParams,
@@ -28,7 +36,7 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
       .order("created_at", { ascending: false }),
     supabase
       .from("flashcard_sets")
-      .select("id, title, created_at, updated_at")
+      .select("id, title, source_mode, created_at, updated_at, flashcards(id)")
       .order("updated_at", { ascending: false }),
   ]);
 
@@ -40,26 +48,35 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
   }));
 
   return (
-    <div className="space-y-8">
-      <PageHeader
-        badge="Flashcards"
-        title="Create flashcards"
-        description="Turn your study materials into review cards you can revisit anytime."
-        actions={
-          <>
+    <div className="space-y-6">
+      <section className="surface-enter rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.22)] sm:p-7">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
+              Flashcards
+            </span>
+            <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
+              Build cards from your notes.
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+              Turn focused topics into saved study sets with source links, flip cards, and spacious review sessions.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
             <Button href="/quizzes" variant="secondary">
               View quizzes
             </Button>
             <Button href="/documents">Browse documents</Button>
-          </>
-        }
-      />
+          </div>
+        </div>
+      </section>
 
       {pageError ? <AlertBanner tone="error">{pageError}</AlertBanner> : null}
       {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
 
-      <div className="grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
-        <Card className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[0.82fr_1.18fr]">
+        <div className="space-y-5">
+        <Card className="surface-enter space-y-5">
           <div>
             <CardTitle>Create flashcards</CardTitle>
             <CardDescription>
@@ -130,7 +147,18 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
           </form>
         </Card>
 
-        <Card className="space-y-5">
+        <Card className="surface-enter space-y-5">
+          <div>
+            <CardTitle>Create your own flashcards</CardTitle>
+            <CardDescription>
+              Build a custom set by writing the fronts and backs yourself.
+            </CardDescription>
+          </div>
+          <ManualFlashcardForm action={createManualFlashcardSet} />
+        </Card>
+        </div>
+
+        <Card className="surface-enter space-y-5">
           <div className="flex items-center justify-between gap-4">
             <div>
               <CardTitle>Saved flashcard sets</CardTitle>
@@ -146,8 +174,8 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
           {!sets || sets.length === 0 ? (
             <EmptyState
               eyebrow="No flashcards yet"
-              title="Generate your first flashcard set."
-              description="Create cards from your own study materials and save them for later review."
+              title="Create your first flashcard set."
+              description="Generate cards from your study materials or write your own and save them for later review."
               actionLabel="Browse documents"
               actionHref="/documents"
               secondaryActionLabel="Open quizzes"
@@ -160,21 +188,43 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
               }
             />
           ) : (
-            <div className="grid gap-3">
+            <div className="max-h-[31rem] overflow-y-auto pr-1 smooth-scroll">
+              <div className="grid gap-3">
               {sets.map((flashcardSet) => (
                 <div
                   key={flashcardSet.id}
-                  className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 transition-colors hover:border-cyan-300/20 hover:bg-white/[0.08] sm:flex-row sm:items-center sm:justify-between"
+                  className="soft-hover flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div>
-                    <p className="text-sm font-semibold text-white">{flashcardSet.title}</p>
-                    <p className="mt-2 text-sm text-slate-400">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-base font-semibold text-white">{flashcardSet.title}</p>
+                      <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[0.68rem] uppercase tracking-[0.16em] text-cyan-200">
+                        {getSetModeLabel(flashcardSet.source_mode)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-400">
+                      <span>{Array.isArray(flashcardSet.flashcards) ? flashcardSet.flashcards.length : 0} cards</span>
+                      <span>
                       Updated {formatDocumentDate(flashcardSet.updated_at)}
-                    </p>
+                      </span>
+                    </div>
                   </div>
-                  <Button href={`/flashcards/${flashcardSet.id}`}>Open flashcards</Button>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button href={`/flashcards/${flashcardSet.id}`}>Open</Button>
+                    <form action={deleteFlashcardSet}>
+                      <input type="hidden" name="setId" value={flashcardSet.id} />
+                      <ConfirmActionSubmitButton
+                        label="Delete"
+                        pendingLabel="Deleting..."
+                        confirmMessage={`Delete "${flashcardSet.title}"? This cannot be undone.`}
+                        variant="ghost"
+                        className="border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
+                      />
+                    </form>
+                  </div>
                 </div>
               ))}
+              </div>
             </div>
           )}
         </Card>

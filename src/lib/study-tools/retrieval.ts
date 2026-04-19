@@ -52,7 +52,16 @@ function mergeContextWindow({
   chunk: StudyChunk;
   chunkMap: Map<number, StudyChunk>;
 }) {
-  const windowContent = [chunk.chunk_index - 1, chunk.chunk_index, chunk.chunk_index + 1]
+  if (chunk.metadata?.evidence_span_strategy) {
+    return chunk;
+  }
+
+  const technicalWindow =
+    /([=^_]|\\frac|\\int|\\sum|\\sqrt|\b(?:sin|cos|tan|log|ln|lim|sqrt|sum|int|formula|equation|derive|therefore|example)\b)/i.test(
+      chunk.content,
+    );
+  const radius = technicalWindow ? 2 : 1;
+  const windowContent = Array.from({ length: radius * 2 + 1 }, (_, offset) => chunk.chunk_index - radius + offset)
     .filter((index) => index >= 0)
     .map((index) => chunkMap.get(index)?.content ?? "")
     .map((content) => content.trim())
@@ -64,6 +73,10 @@ function mergeContextWindow({
     content: windowContent || chunk.content,
     character_count: windowContent.length || chunk.character_count,
   };
+}
+
+function getStudyChunkKey(chunk: StudyChunk) {
+  return `${chunk.chunk_id}:${chunk.metadata?.evidence_span_index ?? "full"}:${chunk.content.slice(0, 80)}`;
 }
 
 export async function retrieveStudyChunks({
@@ -118,17 +131,19 @@ export async function retrieveStudyChunks({
       rank: 0,
     }));
     const chunkMap = new Map<number, StudyChunk>(studyChunks.map((chunk) => [chunk.chunk_index, chunk]));
-    const candidateMap = new Map<string, StudyChunk>(studyChunks.map((chunk) => [chunk.chunk_id, chunk]));
+    const candidateMap = new Map<string, StudyChunk>(studyChunks.map((chunk) => [getStudyChunkKey(chunk), chunk]));
 
     if (normalizedQuery) {
       try {
         const hybridChunks = await retrieveGroundingChunks({
           supabase,
           question: normalizedQuery,
+          documentId,
+          matchCount: Math.max(matchCount * 2, 12),
         });
 
-        for (const chunk of hybridChunks.filter((entry) => entry.document_id === documentId)) {
-          candidateMap.set(chunk.chunk_id, chunk);
+        for (const chunk of hybridChunks) {
+          candidateMap.set(getStudyChunkKey(chunk), chunk);
         }
       } catch {
         // Full-document local ranking below keeps selected-document generation available.
@@ -167,13 +182,14 @@ export async function retrieveStudyChunks({
       const retrieved = await retrieveGroundingChunks({
         supabase,
         question: candidate,
+        matchCount: Math.max(matchCount * 2, 12),
       });
 
       if (retrieved.length > 0) {
         chunks = selectStudyChunks({
           chunks: retrieved,
           queryText: candidate,
-          limit: Math.max(matchCount, 8),
+          limit: Math.max(matchCount * 2, 10),
         });
         titleHint = candidate;
         break;

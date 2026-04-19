@@ -3,6 +3,10 @@ import "server-only";
 type PdfTextExtractionResult = {
   pageCount: number;
   rawText: string;
+  pages: Array<{
+    pageNumber: number;
+    text: string;
+  }>;
 };
 
 declare global {
@@ -61,7 +65,10 @@ export async function extractPdfText(fileBuffer: ArrayBuffer): Promise<PdfTextEx
 
   try {
     const pdf = await loadingTask.promise;
-    const pages: string[] = [];
+    const pages: Array<{
+      pageNumber: number;
+      text: string;
+    }> = [];
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
@@ -70,13 +77,17 @@ export async function extractPdfText(fileBuffer: ArrayBuffer): Promise<PdfTextEx
         .map((item) => ("str" in item && typeof item.str === "string" ? item.str : ""))
         .join(" ");
 
-      pages.push(normalizeWhitespace(pageText));
+      pages.push({
+        pageNumber,
+        text: normalizeWhitespace(pageText),
+      });
       page.cleanup();
     }
 
     return {
       pageCount: pdf.numPages,
-      rawText: normalizeWhitespace(pages.filter(Boolean).join("\n\n")),
+      rawText: normalizeWhitespace(pages.map((page) => page.text).filter(Boolean).join("\n\n")),
+      pages,
     };
   } catch (error) {
     throw new Error(`StudyStack could not read text from this PDF. ${formatExtractionError(error)}`);

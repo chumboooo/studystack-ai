@@ -12,7 +12,7 @@ create table if not exists public.flashcard_sets (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   title text not null,
-  source_mode text not null check (source_mode in ('retrieval', 'document')),
+  source_mode text not null check (source_mode in ('retrieval', 'document', 'manual')),
   query_text text,
   document_id uuid references public.documents (id) on delete set null,
   created_at timestamptz not null default timezone('utc', now()),
@@ -26,9 +26,9 @@ create table if not exists public.flashcards (
   prompt text not null,
   answer text not null,
   source_document_id uuid references public.documents (id) on delete set null,
-  source_document_title text not null,
+  source_document_title text,
   source_chunk_id uuid references public.document_chunks (id) on delete set null,
-  source_chunk_index integer not null,
+  source_chunk_index integer,
   created_at timestamptz not null default timezone('utc', now())
 );
 
@@ -36,7 +36,7 @@ create table if not exists public.quiz_sets (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   title text not null,
-  source_mode text not null check (source_mode in ('retrieval', 'document')),
+  source_mode text not null check (source_mode in ('retrieval', 'document', 'manual')),
   query_text text,
   document_id uuid references public.documents (id) on delete set null,
   created_at timestamptz not null default timezone('utc', now()),
@@ -52,9 +52,9 @@ create table if not exists public.quiz_questions (
   correct_choice_index integer not null check (correct_choice_index >= 0 and correct_choice_index <= 3),
   explanation text not null,
   source_document_id uuid references public.documents (id) on delete set null,
-  source_document_title text not null,
+  source_document_title text,
   source_chunk_id uuid references public.document_chunks (id) on delete set null,
-  source_chunk_index integer not null,
+  source_chunk_index integer,
   created_at timestamptz not null default timezone('utc', now())
 );
 

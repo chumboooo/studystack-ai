@@ -10,8 +10,8 @@ type Flashcard = {
   prompt: string;
   answer: string;
   source_document_id: string | null;
-  source_document_title: string;
-  source_chunk_index: number;
+  source_document_title: string | null;
+  source_chunk_index: number | null;
 };
 
 function shuffleCards(cards: Flashcard[]) {
@@ -98,11 +98,17 @@ export function FlashcardStudySession({ cards }: { cards: Flashcard[] }) {
 
       <div className="flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-white">{activeCard.source_document_title}</p>
-          <p className="mt-1 text-sm text-slate-400">Source section {activeCard.source_chunk_index + 1}</p>
+          <p className="truncate text-sm font-medium text-white">
+            {activeCard.source_document_title ?? "Manual flashcard"}
+          </p>
+          <p className="mt-1 text-sm text-slate-400">
+            {activeCard.source_chunk_index === null
+              ? "Created by you"
+              : `Source section ${activeCard.source_chunk_index + 1}`}
+          </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          {activeCard.source_document_id ? (
+          {activeCard.source_document_id && activeCard.source_chunk_index !== null ? (
             <Button
               href={buildDocumentChunkUrl(activeCard.source_document_id, activeCard.source_chunk_index)}
               variant="secondary"

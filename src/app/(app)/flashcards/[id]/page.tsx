@@ -34,7 +34,7 @@ export default async function FlashcardStudyPage({
 
   const { data: set } = await supabase
     .from("flashcard_sets")
-    .select("id, title, created_at, updated_at")
+    .select("id, title, source_mode, created_at, updated_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -90,10 +90,12 @@ export default async function FlashcardStudyPage({
       ) : (
         <>
           <div className="flex flex-wrap justify-end gap-3">
-            <form action={regenerateFlashcardSet}>
-              <input type="hidden" name="setId" value={set.id} />
-              <ActionSubmitButton label="Regenerate set" pendingLabel="Regenerating..." />
-            </form>
+            {set.source_mode === "manual" ? null : (
+              <form action={regenerateFlashcardSet}>
+                <input type="hidden" name="setId" value={set.id} />
+                <ActionSubmitButton label="Regenerate set" pendingLabel="Regenerating..." />
+              </form>
+            )}
             <form action={deleteFlashcardSet}>
               <input type="hidden" name="setId" value={set.id} />
               <ActionSubmitButton

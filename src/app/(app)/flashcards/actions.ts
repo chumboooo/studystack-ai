@@ -15,6 +15,13 @@ import { retrieveStudyChunks } from "@/lib/study-tools/retrieval";
 type RetrievedSource = Awaited<ReturnType<typeof retrieveStudyChunks>>;
 type GeneratedCards = Awaited<ReturnType<typeof generateFlashcardsFromChunks>>;
 
+function parseManualCardIds(formData: FormData) {
+  return String(formData.get("cardIds") ?? "")
+    .split(",")
+    .map((id) => Number.parseInt(id, 10))
+    .filter(Number.isFinite);
+}
+
 async function generateAndStoreFlashcards({
   setId,
   title,
@@ -166,6 +173,74 @@ export async function generateFlashcardSet(formData: FormData) {
   });
 }
 
+export async function createManualFlashcardSet(formData: FormData) {
+  const { supabase, user } = await requireStudyToolUser();
+  const title = String(formData.get("title") ?? "").trim();
+  const cardIds = parseManualCardIds(formData);
+  const cards = cardIds
+    .map((id) => ({
+      prompt: String(formData.get(`front-${id}`) ?? "").trim(),
+      answer: String(formData.get(`back-${id}`) ?? "").trim(),
+    }))
+    .filter((card) => card.prompt.length > 0 && card.answer.length > 0);
+
+  if (!title || cards.length === 0) {
+    redirect(
+      buildStudyToolRedirect("flashcards", {
+        error: "Add a title and at least one complete flashcard.",
+      }),
+    );
+  }
+
+  const { data: set, error: setError } = await supabase
+    .from("flashcard_sets")
+    .insert({
+      user_id: user.id,
+      title,
+      source_mode: "manual",
+      query_text: null,
+      document_id: null,
+    })
+    .select("id")
+    .single();
+
+  if (setError || !set) {
+    redirect(
+      buildStudyToolRedirect("flashcards", {
+        error: "The manual flashcard set could not be created.",
+      }),
+    );
+  }
+
+  const { error: cardError } = await supabase.from("flashcards").insert(
+    cards.map((card) => ({
+      set_id: set.id,
+      user_id: user.id,
+      prompt: card.prompt,
+      answer: card.answer,
+      source_document_id: null,
+      source_document_title: null,
+      source_chunk_id: null,
+      source_chunk_index: null,
+    })),
+  );
+
+  if (cardError) {
+    redirect(
+      buildStudyToolRedirect("flashcards", {
+        error: "The manual flashcards could not be saved.",
+      }),
+    );
+  }
+
+  revalidatePath("/flashcards");
+  redirect(
+    `/flashcards/${set.id}?${new URLSearchParams({
+      message: "Manual flashcards saved.",
+    }).toString()}`,
+  );
+}
+
 export async function regenerateFlashcardSet(formData: FormData) {
   const { supabase, user } = await requireStudyToolUser();
   const setId = String(formData.get("setId") ?? "").trim();
@@ -176,7 +251,7 @@ export async function regenerateFlashcardSet(formData: FormData) {
 
   const { data: set, error } = await supabase
     .from("flashcard_sets")
-    .select("id, title, query_text, document_id")
+    .select("id, title, source_mode, query_text, document_id")
     .eq("id", setId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -185,6 +260,14 @@ export async function regenerateFlashcardSet(formData: FormData) {
     redirect(
       buildStudyToolRedirect("flashcards", {
         error: "That flashcard set could not be found.",
+      }),
+    );
+  }
+
+  if (set.source_mode === "manual") {
+    redirect(
+      buildStudyToolRedirect("flashcards", {
+        error: "Manual flashcard sets cannot be regenerated automatically.",
       }),
     );
   }
