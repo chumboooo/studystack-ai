@@ -1,6 +1,6 @@
 # Security Policy
 
-StudyStack AI handles private study documents, generated study materials, and authenticated user data. Security issues should not be reported in public GitHub issues.
+StudyStack AI handles private study documents, saved chat threads, planner entries, generated study materials, manual study tools, and authenticated user data. Security issues should not be reported in public GitHub issues.
 
 ## Reporting a Vulnerability
 
@@ -26,6 +26,7 @@ This project is designed to keep privileged operations server-side:
 - User-owned data relies on Supabase Row Level Security.
 - Uploaded PDFs are stored in a private Supabase Storage bucket.
 - PDF preview and download are served through authenticated routes.
+- Chat sessions, planner entries, flashcards, quizzes, and document actions are scoped to the signed-in user.
 - Browser security headers are configured in `next.config.ts`.
 
 Self-hosted deployments should verify that all SQL files in `supabase/` have been applied to the target Supabase project.

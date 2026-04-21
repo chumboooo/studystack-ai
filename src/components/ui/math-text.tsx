@@ -1,5 +1,11 @@
 import katex from "katex";
 import type { ReactNode } from "react";
+import {
+  hasMathSignal,
+  normalizeLatexExpression,
+  normalizeMathUnicode,
+  normalizePlainTextMath,
+} from "@/lib/math/normalize";
 import { cn } from "@/lib/utils";
 
 type MathTextProps = {
@@ -19,55 +25,103 @@ type TextSegment =
       display: boolean;
     };
 
-const GREEK_WORDS: Record<string, string> = {
-  alpha: "\\alpha",
-  beta: "\\beta",
-  gamma: "\\gamma",
-  delta: "\\delta",
-  epsilon: "\\epsilon",
-  theta: "\\theta",
-  lambda: "\\lambda",
-  mu: "\\mu",
-  pi: "\\pi",
-  rho: "\\rho",
-  sigma: "\\sigma",
-  omega: "\\omega",
-};
-
 const EXPLICIT_MATH_PATTERN =
   /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|\$[^$\n]+?\$)/g;
 const INTEGRAL_SYMBOL = "\u222B";
-const SUM_SYMBOL = "\u03A3";
-const SQRT_SYMBOL = "\u221A";
-const MINUS_SYMBOL = "\u2212";
-const LESS_EQUAL_SYMBOL = "\u2264";
-const GREATER_EQUAL_SYMBOL = "\u2265";
-const MOJIBAKE_INTEGRAL = "\u00E2\u02C6\u00AB";
-const MOJIBAKE_MINUS = "\u00E2\u02C6\u2019";
-const MOJIBAKE_SQRT = "\u00E2\u02C6\u0161";
-const MOJIBAKE_SUM = "\u00CE\u00A3";
-const MOJIBAKE_THETA = "\u00CE\u00B8";
-const MOJIBAKE_PI = "\u00CF\u20AC";
 const CONSERVATIVE_INLINE_MATH_PATTERN =
-  /((?:\u222B|\\int|int\b)\s*[^.;\n]{1,120}(?:=|\s+d[a-z]\b)[^.;\n]{0,120}|(?:[A-Za-z][A-Za-z0-9_]*(?:\([^)]{1,40}\))?\s*=\s*[^.;\n]{1,120})|\bd[a-z]\/d[a-z]\b|\bd\/d[a-z]\b|\bsqrt\([^)]+\)|\b(?:sin|cos|tan|sec|csc|cot|ln|log)\([^)]+\)|[A-Za-z0-9)]+\^[A-Za-z0-9({][A-Za-z0-9+\-*/().{}]*)/g;
+  /((?:\u222B|\\int|int(?:_[A-Za-z0-9]+)?(?:\^[A-Za-z0-9]+)?\b)\s*[^.;\n]{1,120}(?:=|\s+d[a-z]\b)[^.;\n]{0,120}|(?:d\/d[a-z]\s*\[[^\]]+\]\s*=\s*[^.;\n]{1,140})|(?:[A-Za-z]{1,6}(?:\([^)]{1,40}\))?\s*=\s*[A-Za-z0-9_+\-*/^()\\\u222B\u221A\s]{1,100})|\bd[a-z]?\/d[a-z]\b|\bsqrt\([^)]+\)|\b(?:sin|cos|tan|sec|csc|cot|ln|log)\([^)]+\)|[A-Za-z0-9)]+\^[A-Za-z0-9({][A-Za-z0-9+\-*/().{}]*|\b(?:alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|rho|sigma|omega)\b(?=\s*(?:[=+\-*/^),\]]|$)))/gi;
 
-function normalizeUnicode(value: string) {
-  return value
-    .replace(new RegExp(MOJIBAKE_INTEGRAL, "g"), INTEGRAL_SYMBOL)
-    .replace(new RegExp(MOJIBAKE_MINUS, "g"), "-")
-    .replace(new RegExp(MOJIBAKE_SQRT, "g"), SQRT_SYMBOL)
-    .replace(new RegExp(MOJIBAKE_SUM, "g"), SUM_SYMBOL)
-    .replace(new RegExp(MOJIBAKE_THETA, "g"), "\u03B8")
-    .replace(new RegExp(MOJIBAKE_PI, "g"), "\u03C0")
-    .replace(/\u222B/g, INTEGRAL_SYMBOL)
-    .replace(/\u2212/g, "-")
-    .replace(/\u221A/g, SQRT_SYMBOL)
-    .replace(/\u2264/g, LESS_EQUAL_SYMBOL)
-    .replace(/\u2265/g, GREATER_EQUAL_SYMBOL)
-    .replace(/\u03A3/g, SUM_SYMBOL)
-    .replace(/\u03B8/g, "\u03B8")
-    .replace(/\u03C0/g, "\u03C0")
-    .replace(new RegExp(MINUS_SYMBOL, "g"), "-");
+function getMathSignalCount(value: string) {
+  return (value.match(/[=^_+\-*/()]|\u222B|\u03A3|\u221A|\\int|\\frac|\\sum|\\sqrt|\bd[a-z]?\/d[a-z]\b/g) ?? [])
+    .length;
+}
+
+function getMathWordCount(value: string) {
+  return (value.match(/[A-Za-z]{3,}/g) ?? []).length;
+}
+
+function shouldPromoteInlineToDisplay(value: string) {
+  const normalized = normalizeMathUnicode(value).trim();
+
+  if (!hasMathSignal(normalized) || normalized.length < 8) {
+    return false;
+  }
+
+  const signalCount = getMathSignalCount(normalized);
+  const wordCount = getMathWordCount(normalized);
+  const startsAsFormula = /^(\u222B|\\int|\\frac|\\sum|\\sqrt|d\/d[a-z]\b|d[a-z]\/d[a-z]\b)/i.test(normalized);
+  const hasEquality = normalized.includes("=");
+  const looksStepLike =
+    /(?:^|[\s(])(?:therefore|thus|hence|so|then|next|substitute|differentiate|integrate|solve|rearrange)\b/i.test(
+      normalized,
+    ) && hasEquality;
+
+  return (
+    startsAsFormula ||
+    looksStepLike ||
+    (hasEquality && signalCount >= 2 && normalized.length >= 18 && wordCount <= 16) ||
+    signalCount >= 6
+  );
+}
+
+function splitDisplayCandidate(value: string) {
+  const normalized = normalizeMathUnicode(value).trim();
+
+  if (!hasMathSignal(normalized)) {
+    return null;
+  }
+
+  const startMatches = [
+    normalized.search(/(?:\u222B|\\int|\bint(?:_[A-Za-z0-9]+)?(?:\^[A-Za-z0-9]+)?\b|\\frac|d\/d[a-z]\b|d[a-z]\/d[a-z]\b)/i),
+    normalized.search(/[A-Za-z][A-Za-z0-9()]*\s*=/),
+  ].filter((index) => index >= 0);
+
+  if (startMatches.length === 0) {
+    return null;
+  }
+
+  const startIndex = Math.min(...startMatches);
+  const before = normalized.slice(0, startIndex).trimEnd();
+  let formula = normalized.slice(startIndex).trim();
+  let after = "";
+
+  const trailingConnector =
+    /\s+(and|because|which|where|so|then|therefore|thus|hence|from|for|with|while|but|since|after)\b/gi;
+
+  for (const match of formula.matchAll(trailingConnector)) {
+    const index = match.index ?? -1;
+
+    if (index <= 0) {
+      continue;
+    }
+
+    const candidateFormula = formula.slice(0, index).trimEnd();
+    const candidateAfter = formula.slice(index).trim();
+    const proseWordCount = getMathWordCount(candidateAfter);
+    const trailingMathSignals = getMathSignalCount(candidateAfter);
+
+    if (proseWordCount >= 2 && trailingMathSignals <= 1 && getMathSignalCount(candidateFormula) >= 2) {
+      formula = candidateFormula;
+      after = candidateAfter;
+      break;
+    }
+  }
+
+  if (!shouldPromoteInlineToDisplay(formula)) {
+    return null;
+  }
+
+  const normalizedFormula = prepareRenderableExpression(formula);
+
+  if (!canRenderMath(normalizedFormula)) {
+    return null;
+  }
+
+  return {
+    before,
+    formula: normalizedFormula,
+    after,
+  };
 }
 
 function stripExplicitDelimiters(value: string) {
@@ -105,59 +159,40 @@ function stripExplicitDelimiters(value: string) {
   };
 }
 
-function normalizeMathExpression(value: string) {
-  let expression = normalizeUnicode(value)
-    .replace(new RegExp(`${SQRT_SYMBOL}\\s*\\(([^)]+)\\)`, "g"), "\\sqrt{$1}")
-    .replace(new RegExp(`${SQRT_SYMBOL}\\s*([A-Za-z0-9]+)`, "g"), "\\sqrt{$1}")
-    .replace(/\b(?:d([a-z])\/d([a-z]))\b/g, "\\frac{d$1}{d$2}")
-    .replace(/\bd\/d([a-z])\b/g, "\\frac{d}{d$1}")
-    .replace(new RegExp(INTEGRAL_SYMBOL, "g"), "\\int ")
-    .replace(/\bint\b/g, "\\int ")
-    .replace(new RegExp(SUM_SYMBOL, "g"), "\\sum ")
-    .replace(/\bsqrt\(([^)]+)\)/g, "\\sqrt{$1}")
-    .replace(/\b(sin|cos|tan|sec|csc|cot|ln|log)\b/g, "\\$1")
-    .replace(
-      /\b(alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|rho|sigma|omega)\b/gi,
-      (match) => GREEK_WORDS[match.toLowerCase()] ?? match,
-    )
-    .replace(/([A-Za-z0-9)]+)\^([A-Za-z0-9+\-*/().]+)/g, "$1^{$2}")
-    .replace(/\s+/g, " ")
-    .trim();
+function prepareRenderableExpression(value: string) {
+  const normalized = normalizeMathUnicode(value).trim();
 
-  expression = expression
-    .replace(/\\int\s+(.+?)\s+d([a-z])\b/g, "\\int $1\\,d$2")
-    .replace(/\\int\s*([A-Za-z])\s+d([A-Za-z])\b/g, "\\int $1\\,d$2")
-    .replace(new RegExp(LESS_EQUAL_SYMBOL, "g"), "\\le ")
-    .replace(new RegExp(GREATER_EQUAL_SYMBOL, "g"), "\\ge ");
+  if (/\\[A-Za-z]+/.test(normalized)) {
+    return normalized.replace(/\s+/g, " ").trim();
+  }
 
-  return expression;
+  return normalizeLatexExpression(normalized);
 }
 
-function hasMathSignal(value: string) {
-  return /\\|[=^_+\-*/]|\u222B|\u03A3|\u221A|\bd[a-z]\/d[a-z]\b|\bd\/d[a-z]\b|\bint\b|\bsqrt\b|\bsum\b/.test(
-    value,
-  );
+function hasExplicitMathDelimiter(value: string) {
+  EXPLICIT_MATH_PATTERN.lastIndex = 0;
+  const hasDelimiter = EXPLICIT_MATH_PATTERN.test(value);
+  EXPLICIT_MATH_PATTERN.lastIndex = 0;
+
+  return hasDelimiter;
 }
 
 function isLikelyDisplayMath(line: string) {
-  const trimmed = normalizeUnicode(line).trim();
+  const trimmed = normalizeMathUnicode(line).trim();
 
   if (trimmed.length < 5 || !hasMathSignal(trimmed)) {
     return false;
   }
 
-  const wordCount = (trimmed.match(/[A-Za-z]{3,}/g) ?? []).length;
-  const mathSignalCount =
-    (trimmed.match(/[=^_+\-*/()]|\u222B|\u03A3|\u221A|\\int|\\frac|\bd[a-z]\/d[a-z]\b/g) ?? [])
-      .length;
+  const wordCount = getMathWordCount(trimmed);
+  const mathSignalCount = getMathSignalCount(trimmed);
+
+  const startsAsFormula = trimmed.startsWith(INTEGRAL_SYMBOL) || trimmed.startsWith("\\int");
 
   return (
-    trimmed.length <= 180 &&
-    (trimmed.startsWith(INTEGRAL_SYMBOL) ||
-      trimmed.startsWith("\\int") ||
-      trimmed.includes("=") ||
-      mathSignalCount >= 3) &&
-    wordCount <= 10
+    trimmed.length <= 160 &&
+    (startsAsFormula || mathSignalCount >= 3 || (trimmed.includes("=") && mathSignalCount >= 2)) &&
+    wordCount <= (startsAsFormula ? 12 : 8)
   );
 }
 
@@ -177,7 +212,12 @@ function canRenderMath(value: string) {
 }
 
 function splitInlineMath(value: string): TextSegment[] {
-  const normalizedValue = normalizeUnicode(value);
+  const normalizedValue = normalizeMathUnicode(value);
+
+  if (!hasMathSignal(normalizedValue)) {
+    return [{ type: "text", value: normalizedValue }];
+  }
+
   const segments: TextSegment[] = [];
   let cursor = 0;
 
@@ -190,13 +230,13 @@ function splitInlineMath(value: string): TextSegment[] {
       segments.push({ type: "text", value: normalizedValue.slice(cursor, index) });
     }
 
-    const normalized = normalizeMathExpression(matchValue);
+    const normalized = prepareRenderableExpression(matchValue);
 
     if (hasMathSignal(matchValue) && canRenderMath(normalized)) {
       segments.push({
         type: "math",
         value: normalized,
-        display: false,
+        display: shouldPromoteInlineToDisplay(normalized),
       });
     } else {
       segments.push({ type: "text", value: rawMatch });
@@ -214,7 +254,7 @@ function splitInlineMath(value: string): TextSegment[] {
 
 function splitPlainText(value: string): TextSegment[] {
   const segments: TextSegment[] = [];
-  const lines = normalizeUnicode(value).split(/(\n+)/);
+  const lines = normalizeMathUnicode(value).split(/(\n+)/);
 
   for (const line of lines) {
     if (line.startsWith("\n")) {
@@ -222,8 +262,28 @@ function splitPlainText(value: string): TextSegment[] {
       continue;
     }
 
+    const splitCandidate = splitDisplayCandidate(line);
+
+    if (splitCandidate) {
+      if (splitCandidate.before) {
+        segments.push(...splitInlineMath(splitCandidate.before));
+      }
+
+      segments.push({
+        type: "math",
+        value: splitCandidate.formula,
+        display: true,
+      });
+
+      if (splitCandidate.after) {
+        segments.push({ type: "text", value: ` ${splitCandidate.after}` });
+      }
+
+      continue;
+    }
+
     if (isLikelyDisplayMath(line)) {
-      const normalized = normalizeMathExpression(line);
+      const normalized = prepareRenderableExpression(line);
       segments.push(
         canRenderMath(normalized)
           ? { type: "math", value: normalized, display: true }
@@ -239,7 +299,16 @@ function splitPlainText(value: string): TextSegment[] {
 }
 
 function tokenizeContent(content: string): TextSegment[] {
-  const normalizedContent = normalizeUnicode(content);
+  const normalizedContent = normalizePlainTextMath(content);
+
+  EXPLICIT_MATH_PATTERN.lastIndex = 0;
+
+  if (!hasExplicitMathDelimiter(normalizedContent) && !hasMathSignal(normalizedContent)) {
+    return [{ type: "text", value: normalizedContent }];
+  }
+
+  EXPLICIT_MATH_PATTERN.lastIndex = 0;
+
   const segments: TextSegment[] = [];
   let cursor = 0;
 
@@ -252,13 +321,13 @@ function tokenizeContent(content: string): TextSegment[] {
     }
 
     const { display, expression } = stripExplicitDelimiters(matchValue);
-    const normalized = normalizeMathExpression(expression);
+    const normalized = prepareRenderableExpression(expression);
     segments.push(
       canRenderMath(normalized)
         ? {
             type: "math",
             value: normalized,
-            display,
+            display: display || shouldPromoteInlineToDisplay(normalized),
           }
         : { type: "text", value: expression },
     );

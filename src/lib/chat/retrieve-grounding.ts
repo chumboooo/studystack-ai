@@ -1,6 +1,7 @@
 import type { RetrievalChunk } from "@/lib/chat/grounded-answer";
 import { logRetrievalDiagnostic } from "@/lib/debug/retrieval-diagnostics";
 import { embedText, serializeEmbedding } from "@/lib/openai/embeddings";
+import { decomposeQueryParts } from "@/lib/retrieval/query-parts";
 import type { createClient } from "@/lib/supabase/server";
 
 const INITIAL_CANDIDATE_COUNT = 32;
@@ -124,6 +125,7 @@ type QueryProfile = {
   strongTerms: string[];
   aliasGroups: string[][];
   phrases: string[];
+  surfacePhrases: string[];
 };
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -208,6 +210,46 @@ function extractQueryPhrases(question: string) {
   for (let length = Math.min(5, terms.length); length >= 2; length -= 1) {
     for (let index = 0; index <= terms.length - length; index += 1) {
       phrases.add(terms.slice(index, index + length).join(" "));
+    }
+  }
+
+  return Array.from(phrases);
+}
+
+function extractSurfacePhrases(question: string) {
+  const words = normalizeSearchText(question).split(" ").filter(Boolean);
+  const phrases = new Set<string>();
+  const promptWords = new Set([
+    "about",
+    "answer",
+    "compare",
+    "difference",
+    "does",
+    "explain",
+    "give",
+    "help",
+    "how",
+    "please",
+    "show",
+    "summary",
+    "tell",
+    "what",
+    "when",
+    "where",
+    "which",
+    "why",
+  ]);
+
+  for (let length = Math.min(6, words.length); length >= 2; length -= 1) {
+    for (let index = 0; index <= words.length - length; index += 1) {
+      const phraseWords = words.slice(index, index + length);
+      const meaningfulWords = phraseWords.filter(
+        (word) => !STOP_WORDS.has(word) && !promptWords.has(word),
+      );
+
+      if (meaningfulWords.length >= 2) {
+        phrases.add(phraseWords.join(" "));
+      }
     }
   }
 
@@ -361,6 +403,7 @@ function buildQueryProfile(question: string): QueryProfile {
     strongTerms,
     aliasGroups,
     phrases: extractQueryPhrases(question),
+    surfacePhrases: extractSurfacePhrases(question),
   };
 }
 
@@ -381,6 +424,8 @@ function getOverlapMetrics(chunk: RetrievalChunk, profile: QueryProfile) {
   );
   const phraseMatches = profile.phrases.filter((phrase) => searchableText.includes(phrase)).length;
   const headingMatches = profile.phrases.filter((phrase) => headingText.includes(phrase)).length;
+  const surfacePhraseMatches = profile.surfacePhrases.filter((phrase) => searchableText.includes(phrase)).length;
+  const headingSurfaceMatches = profile.surfacePhrases.filter((phrase) => headingText.includes(phrase)).length;
 
   return {
     directTermMatches,
@@ -389,13 +434,48 @@ function getOverlapMetrics(chunk: RetrievalChunk, profile: QueryProfile) {
     strongAliasDensity,
     phraseMatches,
     headingMatches,
+    surfacePhraseMatches,
+    headingSurfaceMatches,
     hasMeaningfulOverlap:
+      surfacePhraseMatches > 0 ||
       phraseMatches > 0 ||
       directTermMatches >= Math.min(2, Math.max(profile.terms.length, 1)) ||
       strongGroupHits > 0,
     lacksStrongTermCoverage: profile.strongTerms.length > 0 && strongGroupHits === 0,
     lacksAnyOverlap: directTermMatches === 0 && strongGroupHits === 0 && phraseMatches === 0,
   };
+}
+
+function getLocalSubtopicScore(chunk: RetrievalChunk, profile: QueryProfile) {
+  const normalizedContent = normalizeSearchText(chunk.content);
+  const headingText = getHeadingText(chunk);
+  const searchableText = `${headingText} ${normalizedContent}`;
+  const surfacePhraseHits = profile.surfacePhrases.filter((phrase) => searchableText.includes(phrase)).length;
+  const headingSurfaceHits = profile.surfacePhrases.filter((phrase) => headingText.includes(phrase)).length;
+  const termPositions = profile.terms
+    .map((term) => normalizedContent.indexOf(term))
+    .filter((position) => position >= 0)
+    .sort((left, right) => left - right);
+  const localWindowBonus =
+    termPositions.length >= 2 && termPositions[termPositions.length - 1] - termPositions[0] <= 450
+      ? 2.2
+      : 0;
+  const firstSection = normalizedContent.slice(0, 900);
+  const earlyTermMatches = profile.terms.filter((term) => firstSection.includes(term)).length;
+  const sectionCueBonus =
+    /\b(section|definition|example|method|rule|law|formula|theorem|recall|therefore|using|applying)\b/i.test(
+      chunk.content,
+    ) && (surfacePhraseHits > 0 || earlyTermMatches >= 1)
+      ? 1.4
+      : 0;
+
+  return (
+    surfacePhraseHits * 3.6 +
+    headingSurfaceHits * 3 +
+    localWindowBonus +
+    Math.min(earlyTermMatches, 3) * 0.7 +
+    sectionCueBonus
+  );
 }
 
 function scoreChunk(chunk: RankedChunkCandidate, question: string, profile: QueryProfile) {
@@ -430,7 +510,12 @@ function scoreChunk(chunk: RankedChunkCandidate, question: string, profile: Quer
         ) * 0.55
       : 0;
   const strongCoverageBonus = overlap.strongGroupHits * 2.2 + Math.min(overlap.strongAliasDensity, 3) * 0.5;
-  const phraseBonus = overlap.phraseMatches * 2.6 + overlap.headingMatches * 2.4;
+  const phraseBonus =
+    overlap.phraseMatches * 2.6 +
+    overlap.headingMatches * 2.4 +
+    overlap.surfacePhraseMatches * 3.1 +
+    overlap.headingSurfaceMatches * 2.8;
+  const localSubtopicBonus = getLocalSubtopicScore(chunk, profile);
   const technicalBonus =
     Math.min(formulaSignals, 5) * 0.7 +
     (hasDerivationOrExample(chunk.content) ? 2.4 : 0) +
@@ -451,6 +536,7 @@ function scoreChunk(chunk: RankedChunkCandidate, question: string, profile: Quer
     termDensityBonus +
     strongCoverageBonus +
     phraseBonus +
+    localSubtopicBonus +
     technicalBonus +
     pageMetadataBonus +
     explanatoryBonus +
@@ -788,7 +874,13 @@ async function fetchTitleMatchedDocuments({
           document.score >= 4),
     )
     .sort((left, right) => right.score - left.score)
-    .map(({ status, ...document }) => document);
+    .map((document) => ({
+      id: document.id,
+      title: document.title,
+      score: document.score,
+      pageCount: document.pageCount,
+      chunkCount: document.chunkCount,
+    }));
 }
 
 function chooseTitleLockedDocument(matches: TitleMatchedDocument[]) {
@@ -886,6 +978,9 @@ async function fetchShortDocumentFallbackCandidates({
         overlap.directTermMatches * 0.18 +
         overlap.phraseMatches * 0.28 +
         overlap.headingMatches * 0.3 +
+        overlap.surfacePhraseMatches * 0.4 +
+        overlap.headingSurfaceMatches * 0.36 +
+        getLocalSubtopicScore(chunk, profile) * 0.16 +
         (hasTechnicalEvidence(row.content) ? 0.18 : 0) +
         Math.min(countFormulaSignals(row.content), 4) * 0.04;
 
@@ -1256,4 +1351,100 @@ export async function retrieveGroundingChunks({
   });
 
   return finalSources;
+}
+
+function getMergedRetrievalKey(chunk: RetrievalChunk) {
+  return `${chunk.chunk_id}:${chunk.metadata?.evidence_span_index ?? "full"}:${chunk.content.slice(0, 100)}`;
+}
+
+export async function retrieveMultiPartGroundingChunks({
+  supabase,
+  question,
+  documentId,
+  matchCount,
+}: {
+  supabase: SupabaseServerClient;
+  question: string;
+  documentId?: string;
+  matchCount?: number;
+}) {
+  const plan = decomposeQueryParts(question);
+  const finalCount = matchCount ?? DEFAULT_FINAL_CHUNK_COUNT;
+
+  if (!plan.isMultiPart || plan.parts.length <= 1) {
+    return retrieveGroundingChunks({
+      supabase,
+      question,
+      documentId,
+      matchCount,
+    });
+  }
+
+  const perPartCount = Math.max(3, Math.ceil(finalCount / plan.parts.length) + 1);
+  const merged = new Map<string, RetrievalChunk>();
+  const partResults = await Promise.allSettled(
+    plan.parts.map((part) =>
+      retrieveGroundingChunks({
+        supabase,
+        question: part,
+        documentId,
+        matchCount: perPartCount,
+      }),
+    ),
+  );
+
+  for (const result of partResults) {
+    if (result.status !== "fulfilled") {
+      continue;
+    }
+
+    for (const chunk of result.value.slice(0, perPartCount)) {
+      const key = getMergedRetrievalKey(chunk);
+      const existing = merged.get(key);
+
+      merged.set(key, existing ? { ...chunk, rank: Math.max(existing.rank, chunk.rank) } : chunk);
+    }
+  }
+
+  if (merged.size < finalCount) {
+    try {
+      const combined = await retrieveGroundingChunks({
+        supabase,
+        question,
+        documentId,
+        matchCount: finalCount,
+      });
+
+      for (const chunk of combined) {
+        const key = getMergedRetrievalKey(chunk);
+
+        if (!merged.has(key)) {
+          merged.set(key, chunk);
+        }
+      }
+    } catch {
+      // Per-part retrieval is the primary path for multi-topic questions.
+    }
+  }
+
+  const mergedChunks = Array.from(merged.values())
+    .sort((left, right) => right.rank - left.rank)
+    .slice(0, Math.max(finalCount, plan.parts.length * 2));
+
+  logRetrievalDiagnostic("retrieval.multi_part_final", {
+    originalQuestionLength: question.length,
+    intent: plan.intent,
+    parts: plan.parts,
+    finalCount: mergedChunks.length,
+    sources: mergedChunks.map((chunk) => ({
+      documentId: chunk.document_id,
+      documentTitle: chunk.document_title,
+      chunkIndex: chunk.chunk_index,
+      rank: Number(chunk.rank.toFixed(3)),
+      pageStart: chunk.metadata?.page_start ?? null,
+      pageEnd: chunk.metadata?.page_end ?? null,
+    })),
+  });
+
+  return mergedChunks;
 }

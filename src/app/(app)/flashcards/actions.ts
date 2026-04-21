@@ -48,7 +48,7 @@ async function generateAndStoreFlashcards({
       documentId,
       matchCount: 8,
     });
-  } catch (error) {
+  } catch {
     redirect(
       buildStudyToolRedirect("flashcards", {
         error: "StudyStack could not find enough useful material for flashcards.",
@@ -73,7 +73,7 @@ async function generateAndStoreFlashcards({
       studyTopic: retrievalQuery,
       cardCount: requestedCount,
     });
-  } catch (error) {
+  } catch {
     redirect(
       buildStudyToolRedirect("flashcards", {
         error: "Flashcards could not be generated right now.",

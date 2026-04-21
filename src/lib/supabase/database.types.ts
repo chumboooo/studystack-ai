@@ -334,6 +334,7 @@ export type Database = {
           extraction_status: "completed" | "failed" | "pending";
           page_count: number | null;
           raw_text: string;
+          structured_content: Json;
           updated_at: string;
           user_id: string;
         };
@@ -346,6 +347,7 @@ export type Database = {
           extraction_status?: "completed" | "failed" | "pending";
           page_count?: number | null;
           raw_text?: string;
+          structured_content?: Json;
           updated_at?: string;
           user_id: string;
         };
@@ -358,7 +360,53 @@ export type Database = {
           extraction_status?: "completed" | "failed" | "pending";
           page_count?: number | null;
           raw_text?: string;
+          structured_content?: Json;
           updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      document_sections: {
+        Row: {
+          content: string;
+          created_at: string;
+          document_id: string;
+          id: string;
+          metadata: Json;
+          node_index: number;
+          node_type: "document" | "page" | "section" | "span";
+          page_end: number | null;
+          page_start: number | null;
+          parent_node_index: number | null;
+          title: string | null;
+          user_id: string;
+        };
+        Insert: {
+          content?: string;
+          created_at?: string;
+          document_id: string;
+          id?: string;
+          metadata?: Json;
+          node_index: number;
+          node_type: "document" | "page" | "section" | "span";
+          page_end?: number | null;
+          page_start?: number | null;
+          parent_node_index?: number | null;
+          title?: string | null;
+          user_id: string;
+        };
+        Update: {
+          content?: string;
+          created_at?: string;
+          document_id?: string;
+          id?: string;
+          metadata?: Json;
+          node_index?: number;
+          node_type?: "document" | "page" | "section" | "span";
+          page_end?: number | null;
+          page_start?: number | null;
+          parent_node_index?: number | null;
+          title?: string | null;
           user_id?: string;
         };
         Relationships: [];
@@ -412,6 +460,7 @@ export type Database = {
           created_at: string;
           document_id: string;
           document_title: string;
+          metadata: Json;
           rank: number;
         }[];
       };
@@ -428,6 +477,7 @@ export type Database = {
           created_at: string;
           document_id: string;
           document_title: string;
+          metadata: Json;
           similarity: number;
         }[];
       };

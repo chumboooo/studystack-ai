@@ -48,7 +48,7 @@ async function generateAndStoreQuiz({
       documentId,
       matchCount: 8,
     });
-  } catch (error) {
+  } catch {
     redirect(
       buildStudyToolRedirect("quizzes", {
         error: "StudyStack could not find enough useful material for a quiz.",
@@ -73,7 +73,7 @@ async function generateAndStoreQuiz({
       studyTopic: retrievalQuery,
       questionCount: requestedCount,
     });
-  } catch (error) {
+  } catch {
     redirect(
       buildStudyToolRedirect("quizzes", {
         error: "The quiz could not be generated right now.",

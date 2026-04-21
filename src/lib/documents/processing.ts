@@ -1,5 +1,5 @@
 import { embedTexts, serializeEmbedding } from "@/lib/openai/embeddings";
-import { chunkExtractedText } from "@/lib/pdf/chunk-text";
+import { buildStructuredDocument } from "@/lib/documents/structure";
 import { extractPdfText } from "@/lib/pdf/extract-text";
 import { logRetrievalDiagnostic } from "@/lib/debug/retrieval-diagnostics";
 import { createClient as createServerClient } from "@/lib/supabase/server";
@@ -41,6 +41,7 @@ export async function runDocumentExtraction({
       extraction_status: "pending",
       chunk_count: 0,
       raw_text: "",
+      structured_content: {},
       page_count: null,
       extracted_at: null,
       error_message: null,
@@ -60,9 +61,26 @@ export async function runDocumentExtraction({
     throw deleteChunksError;
   }
 
+  await supabase
+    .from("document_sections")
+    .delete()
+    .eq("document_id", documentId)
+    .eq("user_id", userId);
+
   try {
     const extraction = await extractPdfText(sourceBuffer);
-    const chunks = chunkExtractedText(extraction.rawText, extraction.pages);
+    const { data: document } = await supabase
+      .from("documents")
+      .select("title")
+      .eq("id", documentId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    const structuredDocument = buildStructuredDocument({
+      title: document?.title ?? "Untitled document",
+      rawText: extraction.rawText,
+      pages: extraction.pages,
+    });
+    const chunks = structuredDocument.chunks;
     let embeddingErrorMessage: string | null = null;
 
     logRetrievalDiagnostic("pdf.extracted", {
@@ -76,8 +94,31 @@ export async function runDocumentExtraction({
         characters: chunk.characterCount,
         pageStart: chunk.metadata.page_start ?? null,
         pageEnd: chunk.metadata.page_end ?? null,
+        heading: chunk.metadata.heading ?? null,
+        nodeIndex: chunk.metadata.node_index ?? null,
       })),
     });
+
+    if (structuredDocument.nodes.length > 0) {
+      const { error: sectionsInsertError } = await supabase.from("document_sections").insert(
+        structuredDocument.nodes.map((node) => ({
+          document_id: documentId,
+          user_id: userId,
+          node_index: node.nodeIndex,
+          parent_node_index: node.parentNodeIndex,
+          node_type: node.nodeType,
+          title: node.title,
+          content: node.content,
+          page_start: node.pageStart,
+          page_end: node.pageEnd,
+          metadata: node.metadata,
+        })),
+      );
+
+      if (sectionsInsertError) {
+        throw sectionsInsertError;
+      }
+    }
 
     if (chunks.length > 0) {
       const { data: insertedChunks, error: chunkInsertError } = await supabase
@@ -133,7 +174,7 @@ export async function runDocumentExtraction({
             }
           }),
         );
-      } catch (error) {
+      } catch {
         embeddingErrorMessage = "This document is ready, but some study helpers may be less accurate.";
       }
     }
@@ -144,6 +185,7 @@ export async function runDocumentExtraction({
         extraction_status: "completed",
         chunk_count: chunks.length,
         raw_text: extraction.rawText,
+        structured_content: structuredDocument,
         page_count: extraction.pageCount,
         extracted_at: new Date().toISOString(),
         error_message: embeddingErrorMessage,
@@ -170,6 +212,7 @@ export async function runDocumentExtraction({
         extraction_status: "failed",
         chunk_count: 0,
         raw_text: "",
+        structured_content: {},
         page_count: null,
         extracted_at: null,
         error_message: message,
@@ -179,6 +222,12 @@ export async function runDocumentExtraction({
 
     await supabase
       .from("document_chunks")
+      .delete()
+      .eq("document_id", documentId)
+      .eq("user_id", userId);
+
+    await supabase
+      .from("document_sections")
       .delete()
       .eq("document_id", documentId)
       .eq("user_id", userId);

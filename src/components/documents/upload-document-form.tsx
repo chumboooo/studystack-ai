@@ -127,7 +127,7 @@ export function UploadDocumentForm({
           }),
         );
         router.refresh();
-      } catch (error) {
+      } catch {
         setStatusMessage(null);
         setErrorMessage("The upload could not be completed. Please try again.");
       }

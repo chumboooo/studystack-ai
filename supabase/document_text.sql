@@ -36,8 +36,27 @@ create table if not exists public.document_chunks (
   unique (document_id, chunk_index)
 );
 
+create table if not exists public.document_sections (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references public.documents (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  node_index integer not null,
+  parent_node_index integer,
+  node_type text not null check (node_type in ('document', 'page', 'section', 'span')),
+  title text,
+  content text not null default '',
+  page_start integer,
+  page_end integer,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now()),
+  unique (document_id, node_index)
+);
+
 alter table public.document_contents
   add column if not exists chunk_count integer not null default 0;
+
+alter table public.document_contents
+  add column if not exists structured_content jsonb not null default '{}'::jsonb;
 
 alter table public.document_chunks
   add column if not exists character_count integer not null default 0;
@@ -53,6 +72,16 @@ create index if not exists document_chunks_document_id_idx
 
 create index if not exists document_chunks_user_id_idx
   on public.document_chunks (user_id);
+
+create index if not exists document_sections_document_node_idx
+  on public.document_sections (document_id, node_index);
+
+create index if not exists document_sections_user_type_idx
+  on public.document_sections (user_id, node_type);
+
+create index if not exists document_sections_content_fts_idx
+  on public.document_sections
+  using gin (to_tsvector('english', content));
 
 create index if not exists document_chunks_content_fts_idx
   on public.document_chunks
@@ -70,6 +99,7 @@ execute function public.set_updated_at();
 
 alter table public.document_contents enable row level security;
 alter table public.document_chunks enable row level security;
+alter table public.document_sections enable row level security;
 
 drop policy if exists "Users can view their own document contents" on public.document_contents;
 create policy "Users can view their own document contents"
@@ -121,6 +151,31 @@ create policy "Users can delete their own document chunks"
   for delete
   using (auth.uid() = user_id);
 
+drop policy if exists "Users can view their own document sections" on public.document_sections;
+create policy "Users can view their own document sections"
+  on public.document_sections
+  for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can insert their own document sections" on public.document_sections;
+create policy "Users can insert their own document sections"
+  on public.document_sections
+  for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update their own document sections" on public.document_sections;
+create policy "Users can update their own document sections"
+  on public.document_sections
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can delete their own document sections" on public.document_sections;
+create policy "Users can delete their own document sections"
+  on public.document_sections
+  for delete
+  using (auth.uid() = user_id);
+
 create or replace function public.search_document_chunks(query_text text, match_count integer default 8)
 returns table (
   chunk_id uuid,
@@ -129,6 +184,7 @@ returns table (
   chunk_index integer,
   content text,
   character_count integer,
+  metadata jsonb,
   created_at timestamptz,
   rank real
 )
@@ -147,6 +203,7 @@ as $$
     chunks.chunk_index,
     chunks.content,
     chunks.character_count,
+    chunks.metadata,
     chunks.created_at,
     ts_rank_cd(to_tsvector('english', chunks.content), prepared.ts_query)::real as rank
   from public.document_chunks as chunks
@@ -177,6 +234,7 @@ returns table (
   chunk_index integer,
   content text,
   character_count integer,
+  metadata jsonb,
   created_at timestamptz,
   similarity real
 )
@@ -190,6 +248,7 @@ as $$
     chunks.chunk_index,
     chunks.content,
     chunks.character_count,
+    chunks.metadata,
     chunks.created_at,
     (1 - (chunks.embedding <=> query_embedding))::real as similarity
   from public.document_chunks as chunks

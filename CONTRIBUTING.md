@@ -25,7 +25,7 @@ npm run dev
 ## Development Guidelines
 
 - Keep changes small and readable.
-- Preserve auth, uploads, documents, chat, flashcards, quizzes, and secure preview/download flows.
+- Preserve auth, uploads, documents, threaded chat, planner entries, flashcards, quizzes, manual study tools, and secure preview/download flows.
 - Keep Supabase user scoping and RLS assumptions intact.
 - Keep OpenAI usage server-side.
 - Avoid exposing internal implementation details in user-facing UI.

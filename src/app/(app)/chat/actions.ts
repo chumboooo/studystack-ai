@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { generateGroundedAnswer, type RetrievalChunk } from "@/lib/chat/grounded-answer";
-import { retrieveGroundingChunks } from "@/lib/chat/retrieve-grounding";
+import { retrieveMultiPartGroundingChunks } from "@/lib/chat/retrieve-grounding";
+import { decomposeQueryParts } from "@/lib/retrieval/query-parts";
 import { createClient } from "@/lib/supabase/server";
 
 function buildChatRedirect(params: Record<string, string>) {
@@ -143,13 +144,14 @@ export async function submitGroundedQuestion(formData: FormData) {
     : { data: [] };
   const threadContext = buildThreadContext(priorTurns ?? []);
   const retrievalQuestion = buildRetrievalQuestion(question, threadContext);
+  const queryPlan = decomposeQueryParts(question);
 
   try {
-    retrievedChunks = await retrieveGroundingChunks({
+    retrievedChunks = await retrieveMultiPartGroundingChunks({
       supabase,
-      question: retrievalQuestion,
+      question: queryPlan.isMultiPart ? question : retrievalQuestion,
     });
-  } catch (error) {
+  } catch {
     redirect(
       buildChatRedirect({
         session: activeSessionId,

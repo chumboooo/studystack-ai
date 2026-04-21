@@ -6,6 +6,7 @@ type PdfTextExtractionResult = {
   pages: Array<{
     pageNumber: number;
     text: string;
+    lines: string[];
   }>;
 };
 
@@ -19,6 +20,62 @@ declare global {
 
 function normalizeWhitespace(value: string) {
   return value.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function normalizeLine(value: string) {
+  return value.replace(/[ \t]+/g, " ").trim();
+}
+
+function buildStructuredLines(items: Array<unknown>) {
+  const positionedItems = items
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const textItem = item as {
+        str?: unknown;
+        transform?: unknown;
+      };
+
+      if (typeof textItem.str !== "string") {
+        return null;
+      }
+
+      const transform = Array.isArray(textItem.transform) ? textItem.transform : [];
+      const x = typeof transform[4] === "number" ? transform[4] : 0;
+      const y = typeof transform[5] === "number" ? transform[5] : 0;
+
+      return {
+        text: textItem.str,
+        x,
+        y,
+      };
+    })
+    .filter((item): item is { text: string; x: number; y: number } => Boolean(item && item.text.trim()));
+  const lineMap = new Map<number, Array<{ text: string; x: number }>>();
+
+  for (const item of positionedItems) {
+    const yKey = Math.round(item.y / 3) * 3;
+    const lineItems = lineMap.get(yKey) ?? [];
+    lineItems.push({
+      text: item.text,
+      x: item.x,
+    });
+    lineMap.set(yKey, lineItems);
+  }
+
+  return Array.from(lineMap.entries())
+    .sort((left, right) => right[0] - left[0])
+    .map(([, lineItems]) =>
+      normalizeLine(
+        lineItems
+          .sort((left, right) => left.x - right.x)
+          .map((item) => item.text)
+          .join(" "),
+      ),
+    )
+    .filter(Boolean);
 }
 
 function formatExtractionError(error: unknown) {
@@ -68,18 +125,27 @@ export async function extractPdfText(fileBuffer: ArrayBuffer): Promise<PdfTextEx
     const pages: Array<{
       pageNumber: number;
       text: string;
+      lines: string[];
     }> = [];
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item) => ("str" in item && typeof item.str === "string" ? item.str : ""))
-        .join(" ");
+      const lines = buildStructuredLines(textContent.items as Array<unknown>);
+      const pageText = lines.length > 0
+        ? lines.join("\n")
+        : textContent.items
+            .map((item) => {
+              const textItem = item as { str?: unknown };
+
+              return typeof textItem.str === "string" ? textItem.str : "";
+            })
+            .join(" ");
 
       pages.push({
         pageNumber,
         text: normalizeWhitespace(pageText),
+        lines,
       });
       page.cleanup();
     }

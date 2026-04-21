@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "eval": "node tests/pipeline-eval.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",

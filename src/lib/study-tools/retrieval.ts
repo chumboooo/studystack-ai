@@ -1,5 +1,6 @@
-import { retrieveGroundingChunks } from "@/lib/chat/retrieve-grounding";
+import { retrieveMultiPartGroundingChunks } from "@/lib/chat/retrieve-grounding";
 import type { RetrievalChunk } from "@/lib/chat/grounded-answer";
+import { decomposeQueryParts } from "@/lib/retrieval/query-parts";
 import { selectStudyChunks } from "@/lib/study-tools/source-selection";
 import type { createClient } from "@/lib/supabase/server";
 
@@ -79,6 +80,47 @@ function getStudyChunkKey(chunk: StudyChunk) {
   return `${chunk.chunk_id}:${chunk.metadata?.evidence_span_index ?? "full"}:${chunk.content.slice(0, 80)}`;
 }
 
+function selectMultiPartStudyChunks({
+  chunks,
+  queryText,
+  limit,
+}: {
+  chunks: StudyChunk[];
+  queryText: string;
+  limit: number;
+}) {
+  const plan = decomposeQueryParts(queryText);
+
+  if (!plan.isMultiPart || plan.parts.length <= 1) {
+    return selectStudyChunks({
+      chunks,
+      queryText,
+      limit,
+    });
+  }
+
+  const selectedMap = new Map<string, StudyChunk>();
+  const perPartLimit = Math.max(2, Math.ceil(limit / plan.parts.length) + 1);
+
+  for (const part of plan.parts) {
+    const selected = selectStudyChunks({
+      chunks,
+      queryText: part,
+      limit: perPartLimit,
+    });
+
+    for (const chunk of selected) {
+      selectedMap.set(getStudyChunkKey(chunk), chunk);
+    }
+  }
+
+  return selectStudyChunks({
+    chunks: Array.from(selectedMap.values()),
+    queryText,
+    limit,
+  });
+}
+
 export async function retrieveStudyChunks({
   supabase,
   queryText,
@@ -135,7 +177,7 @@ export async function retrieveStudyChunks({
 
     if (normalizedQuery) {
       try {
-        const hybridChunks = await retrieveGroundingChunks({
+        const hybridChunks = await retrieveMultiPartGroundingChunks({
           supabase,
           question: normalizedQuery,
           documentId,
@@ -150,7 +192,7 @@ export async function retrieveStudyChunks({
       }
     }
 
-    const rankedChunks = selectStudyChunks({
+    const rankedChunks = selectMultiPartStudyChunks({
       chunks: Array.from(candidateMap.values()),
       queryText: normalizedQuery || document.title,
       limit: Math.max(matchCount * 2, 12),
@@ -179,14 +221,14 @@ export async function retrieveStudyChunks({
 
   for (const candidate of queryCandidates) {
     try {
-      const retrieved = await retrieveGroundingChunks({
+      const retrieved = await retrieveMultiPartGroundingChunks({
         supabase,
         question: candidate,
         matchCount: Math.max(matchCount * 2, 12),
       });
 
       if (retrieved.length > 0) {
-        chunks = selectStudyChunks({
+        chunks = selectMultiPartStudyChunks({
           chunks: retrieved,
           queryText: candidate,
           limit: Math.max(matchCount * 2, 10),

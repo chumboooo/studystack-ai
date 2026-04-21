@@ -129,7 +129,7 @@ details[open] > summary {
 }
 
 .math-text {
-  white-space: inherit;
+  white-space: pre-wrap;
   overflow-wrap: break-word;
 }
 
@@ -139,11 +139,21 @@ details[open] > summary {
   vertical-align: -0.15em;
 }
 
+.math-inline .katex {
+  white-space: nowrap;
+}
+
 .math-display {
   display: block;
   max-width: 100%;
   overflow-x: auto;
-  padding: 0.55rem 0;
+  margin: 0.9rem 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.65)),
+    radial-gradient(circle at top, rgba(34, 211, 238, 0.08), transparent 60%);
   white-space: normal;
 }
 
@@ -153,13 +163,23 @@ details[open] > summary {
 }
 
 .math-text .katex-display {
-  margin: 0.45rem 0;
+  margin: 0.1rem 0;
   overflow-x: auto;
   overflow-y: hidden;
+  padding: 0;
+  text-align: center;
+}
+
+.math-display .katex-display {
+  margin: 0;
 }
 
 .math-text .katex-html {
   max-width: 100%;
+}
+
+.math-display + .math-display {
+  margin-top: 0.7rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

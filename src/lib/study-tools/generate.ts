@@ -1,4 +1,5 @@
 import { getGroundedAnswerModel, getOpenAIClient } from "@/lib/openai/server";
+import { decomposeQueryParts } from "@/lib/retrieval/query-parts";
 import {
   isGeneratedStudyItemRelevant,
   selectStudyChunks,
@@ -50,8 +51,27 @@ type QuizGenerationResult = {
 
 function prepareSources(chunks: StudyChunk[], queryText: string) {
   let remaining = MAX_TOTAL_CHARS;
+  const queryPlan = decomposeQueryParts(queryText);
+  const selectedMap = new Map<string, StudyChunk>();
+
+  if (queryPlan.isMultiPart && queryPlan.parts.length > 1) {
+    const perPartLimit = Math.max(2, Math.ceil(MAX_SOURCE_CHUNKS / queryPlan.parts.length) + 1);
+
+    for (const part of queryPlan.parts) {
+      const partChunks = selectStudyChunks({
+        chunks,
+        queryText: part,
+        limit: perPartLimit,
+      });
+
+      for (const chunk of partChunks) {
+        selectedMap.set(`${chunk.chunk_id}:${chunk.metadata?.evidence_span_index ?? "full"}:${chunk.content.slice(0, 80)}`, chunk);
+      }
+    }
+  }
+
   const selectedChunks = selectStudyChunks({
-    chunks,
+    chunks: selectedMap.size > 0 ? Array.from(selectedMap.values()) : chunks,
     queryText,
     limit: MAX_SOURCE_CHUNKS,
   });
@@ -182,6 +202,53 @@ function buildTechnicalStudyGuidance(sources: PreparedSource[]) {
   ].join("\n");
 }
 
+function buildMultiPartStudyGuidance(studyTopic: string) {
+  const plan = decomposeQueryParts(studyTopic);
+
+  if (!plan.isMultiPart || plan.parts.length <= 1) {
+    return "";
+  }
+
+  return [
+    `This request has multiple requested parts: ${plan.parts.join("; ")}.`,
+    "Use the source excerpts to cover each requested part that has evidence.",
+    "Do not let one part crowd out the others when sources support multiple parts.",
+    "For comparisons, include items that test each side and the relationship between them when supported.",
+  ].join("\n");
+}
+
+function isGeneratedItemRelevantToTopic({
+  itemText,
+  sourceContent,
+  queryText,
+}: {
+  itemText: string;
+  sourceContent: string;
+  queryText: string;
+}) {
+  const plan = decomposeQueryParts(queryText);
+
+  if (
+    isGeneratedStudyItemRelevant({
+      itemText,
+      sourceContent,
+      queryText,
+    })
+  ) {
+    return true;
+  }
+
+  return plan.isMultiPart
+    ? plan.parts.some((part) =>
+        isGeneratedStudyItemRelevant({
+          itemText,
+          sourceContent,
+          queryText: part,
+        }),
+      )
+    : false;
+}
+
 function extractJsonArray(rawText: string) {
   const trimmed = rawText.trim();
 
@@ -286,6 +353,7 @@ async function requestQuizPayload({
 }) {
   const client = getOpenAIClient();
   const technicalGuidance = buildTechnicalStudyGuidance(sources);
+  const multiPartGuidance = buildMultiPartStudyGuidance(studyTopic);
 
   return client.responses.create({
     model: getGroundedAnswerModel(),
@@ -309,7 +377,7 @@ async function requestQuizPayload({
         content: [
           {
             type: "input_text",
-              text: `Create ${questionCount} multiple-choice questions for this study topic: ${studyTopic}\nQuiz title: ${titleHint}${technicalGuidance ? `\n\n${technicalGuidance}` : ""}${existingQuestions.length > 0 ? `\n\nDo not repeat the same tested aspect as these existing questions, but it is okay to ask another grounded question from the same source if it tests a different angle:\n- ${existingQuestions.join("\n- ")}` : ""}\n\nUse only these sources:\n${sources
+              text: `Create ${questionCount} multiple-choice questions for this study topic: ${studyTopic}\nQuiz title: ${titleHint}${multiPartGuidance ? `\n\n${multiPartGuidance}` : ""}${technicalGuidance ? `\n\n${technicalGuidance}` : ""}${existingQuestions.length > 0 ? `\n\nDo not repeat the same tested aspect as these existing questions, but it is okay to ask another grounded question from the same source if it tests a different angle:\n- ${existingQuestions.join("\n- ")}` : ""}\n\nUse only these sources:\n${sources
               .map(
                 ({ label, chunk }) =>
                   `[${label}] ${chunk.document_title} (chunk ${chunk.chunk_index + 1})\n${chunk.content}`,
@@ -344,6 +412,7 @@ export async function generateFlashcardsFromChunks({
   const sourceMap = getSourceMap(sources);
   const collected = new Map<string, GeneratedFlashcard>();
   const technicalGuidance = buildTechnicalStudyGuidance(sources);
+  const multiPartGuidance = buildMultiPartStudyGuidance(normalizedTopic);
 
   for (let pass = 0; pass < MAX_GENERATION_PASSES && collected.size < cardCount; pass += 1) {
     const remainingCount = cardCount - collected.size;
@@ -371,7 +440,7 @@ export async function generateFlashcardsFromChunks({
           content: [
             {
               type: "input_text",
-              text: `Create ${remainingCount} strong flashcards for this study topic: ${normalizedTopic}\nSet title: ${titleHint}${technicalGuidance ? `\n\n${technicalGuidance}` : ""}${existingPrompts.length > 0 ? `\n\nDo not repeat the same tested aspect as these existing flashcards, but it is okay to make another grounded card from the same source if it asks a different thing:\n- ${existingPrompts.join("\n- ")}` : ""}\n\nUse only these sources:\n${sources
+              text: `Create ${remainingCount} strong flashcards for this study topic: ${normalizedTopic}\nSet title: ${titleHint}${multiPartGuidance ? `\n\n${multiPartGuidance}` : ""}${technicalGuidance ? `\n\n${technicalGuidance}` : ""}${existingPrompts.length > 0 ? `\n\nDo not repeat the same tested aspect as these existing flashcards, but it is okay to make another grounded card from the same source if it asks a different thing:\n- ${existingPrompts.join("\n- ")}` : ""}\n\nUse only these sources:\n${sources
                 .map(
                   ({ label, chunk }) =>
                     `[${label}] ${chunk.document_title} (chunk ${chunk.chunk_index + 1})\n${chunk.content}`,
@@ -411,7 +480,7 @@ export async function generateFlashcardsFromChunks({
       const dedupeKey = `${front.toLowerCase()}|${back.toLowerCase()}`;
       const isRelevant =
         sourceChunk &&
-        isGeneratedStudyItemRelevant({
+        isGeneratedItemRelevantToTopic({
           itemText: `${front}\n${back}`,
           sourceContent: sourceChunk.content,
           queryText: normalizedTopic,
@@ -510,7 +579,7 @@ export async function generateQuizFromChunks({
       const correctChoice = correctChoiceIndex >= 0 ? choices[correctChoiceIndex] : "";
       const isRelevant =
         sourceChunk &&
-        isGeneratedStudyItemRelevant({
+        isGeneratedItemRelevantToTopic({
           itemText: `${question}\n${correctChoice}\n${explanation}`,
           sourceContent: sourceChunk.content,
           queryText: normalizedTopic,

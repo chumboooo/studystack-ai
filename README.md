@@ -1,6 +1,6 @@
 # StudyStack AI
 
-StudyStack AI is a student-focused study app that turns uploaded PDFs into organized study materials, cited answers, flashcards, and quizzes.
+StudyStack AI is a student-focused study app that turns uploaded PDFs into organized study sessions, cited answers, flashcards, quizzes, and review plans.
 
 ## Live Demo
 
@@ -8,7 +8,7 @@ StudyStack AI is a student-focused study app that turns uploaded PDFs into organ
 
 ## Overview
 
-StudyStack helps students study from the materials they already use in class. Upload notes, slides, readings, or study guides as PDFs, then use the app to ask questions, review source-backed answers, create flashcards, and build quizzes.
+StudyStack helps students study from the materials they already use in class. Upload notes, slides, readings, or study guides as PDFs, then use the app to ask questions, review source-backed answers, create flashcards, build quizzes, and plan review sessions.
 
 The product is designed around reviewability. Answers and study tools stay connected to the uploaded document sections they came from, so students can verify ideas, revisit source material, and keep their study sessions organized.
 
@@ -17,12 +17,17 @@ The product is designed around reviewability. Answers and study tools stay conne
 - Secure sign up, sign in, and sign out with protected app routes
 - Private PDF upload and authenticated preview/download
 - Document library with rename, refresh, delete, sorting, and status feedback
-- Server-side PDF text extraction and study-section preparation
+- Server-side PDF text extraction with structured pages, sections, formulas, examples, and local study spans
 - Search across uploaded study materials
-- Grounded study chat with saved Q&A history and source citations
+- Chat-first study flow with attachment-style PDF uploads
+- Grounded study chat with persistent threads, saved Q&A history, and source citations
 - Source links that jump back to the relevant document section
 - Flashcard generation from uploaded materials
+- Manual flashcard set creation
 - Quiz generation with scoring, explanations, and source links
+- Manual multiple-choice quiz creation
+- Interactive study planner with calendar-based reminders
+- Math rendering for formulas and technical notation
 - Student-facing marketing pages for features, workflow, and onboarding
 - Practical security hardening for private files, user-scoped data, uploads, and browser headers
 
@@ -45,7 +50,7 @@ The product is designed around reviewability. Answers and study tools stay conne
 3. The student asks questions about the uploaded material.
 4. The app finds relevant source sections from that student's documents.
 5. Answers, flashcards, and quizzes are generated from those source sections.
-6. The student can revisit saved answers and open the exact source section later.
+6. The student can create manual study tools, plan future review sessions, revisit saved answers, and open the exact source section later.
 
 ## Preview
 
@@ -65,19 +70,19 @@ The document library lets students upload PDFs, track ready-to-study materials, 
 
 ![StudyStack study chat with source citations](public/readme/study-chat.png)
 
-The study chat saves source-backed answers and keeps citations visible so students can jump back to the supporting document sections.
+The study chat supports threaded follow-up questions, attachment-style uploads, and source-backed answers with citations that jump back to supporting document sections.
 
 ### Flashcards
 
 ![StudyStack flashcard study session](public/readme/flashcards-study.png)
 
-The flashcard study page provides a spacious card-by-card review flow with progress, flip behavior, navigation, and source access.
+The flashcard study page supports generated and manual card sets with a spacious card-by-card review flow, progress, flip behavior, navigation, and source access.
 
 ### Quizzes
 
 ![StudyStack quiz study session](public/readme/quizzes-study.png)
 
-The quiz page creates a focused practice experience with progress tracking, multiple-choice answers, and source-backed review.
+The quiz page supports generated and manual multiple-choice quizzes with progress tracking, scoring, explanations, and source-backed review.
 
 The preview focuses on the core study workflow. Additional preview coverage could include `/features`, `/how-it-works`, and `/get-started`.
 
@@ -140,6 +145,9 @@ Run the SQL files in Supabase SQL Editor in this order:
 3. `supabase/document_text.sql`
 4. `supabase/chat_history.sql`
 5. `supabase/study_tools.sql`
+6. `supabase/manual_study_tools.sql`
+7. `supabase/study_planner.sql`
+8. `supabase/structured_documents.sql` if upgrading an existing Supabase project that ran an older schema
 
 Supabase setup checklist:
 
@@ -184,7 +192,7 @@ src/app/(marketing)        Marketing pages: home, features, how it works, get st
 src/app/(auth)             Sign in, sign up, and auth actions
 src/app/(app)              Protected study app routes
 src/app/api                Server routes for upload finalization
-src/components             Shared UI, app, document, chat, flashcard, and quiz components
+src/components             Shared UI, app, document, chat, planner, flashcard, and quiz components
 src/lib                    Supabase, OpenAI, PDF, retrieval, document, and security helpers
 supabase                   Database, RLS, storage, and retrieval SQL setup
 public/brand               StudyStack logo assets
@@ -202,6 +210,7 @@ Security-related implementation details include:
 - The OpenAI API key is only used server-side.
 - Browser security headers are configured in `next.config.ts`.
 - Retrieved document text is treated as untrusted input in AI prompts.
+- Planner entries, chat threads, flashcards, quizzes, and document records are scoped to the authenticated user.
 
 Self-hosted deployments should verify that the SQL policies in `supabase/` are applied in the target Supabase project.
 
@@ -229,6 +238,7 @@ npm run dev      # Start the local dev server
 npm run build    # Create a production build
 npm run start    # Run the production build locally
 npm run lint     # Run ESLint
+npm run eval     # Run document-understanding regression checks
 ```
 
 ## Roadmap

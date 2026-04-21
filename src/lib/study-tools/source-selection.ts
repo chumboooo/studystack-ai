@@ -165,7 +165,6 @@ function getTermVariants(term: string) {
 }
 
 function extractStudyPhrases(queryText: string) {
-  const normalized = normalizePhrase(queryText);
   const phrases = new Set<string>();
 
   for (const quoted of queryText.matchAll(/"([^"]+)"/g)) {

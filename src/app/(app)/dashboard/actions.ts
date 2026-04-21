@@ -25,15 +25,23 @@ async function requireDashboardUser() {
 
 export async function createPlannerEntry(formData: FormData) {
   const { supabase, user } = await requireDashboardUser();
-  const title = String(formData.get("title") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim().slice(0, 140);
   const entryDate = String(formData.get("entryDate") ?? "").trim();
   const entryType = String(formData.get("entryType") ?? "study_session").trim();
-  const note = String(formData.get("note") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim().slice(0, 600);
 
   if (!title || !entryDate) {
     redirect(
       buildDashboardRedirect({
         error: "Add a title and date for the study plan.",
+      }),
+    );
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate)) {
+    redirect(
+      buildDashboardRedirect({
+        error: "Choose a valid calendar date for the study plan.",
       }),
     );
   }
