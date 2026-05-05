@@ -22,10 +22,10 @@ The product is designed around reviewability. Answers and study tools stay conne
 - Chat-first study flow with attachment-style PDF uploads
 - Grounded study chat with persistent threads, saved Q&A history, and source citations
 - Source links that jump back to the relevant document section
-- Flashcard generation from uploaded materials
-- Manual flashcard set creation
-- Quiz generation with scoring, explanations, and source links
-- Manual multiple-choice quiz creation
+- Flashcard generation from uploaded materials with filtering, ratings, shuffle, and end-of-session review
+- Manual flashcard set creation and editing
+- Quiz generation with scoring, explanations, missed-question review, and source links
+- Manual multiple-choice quiz creation and editing
 - Interactive study planner with calendar-based reminders
 - Math rendering for formulas and technical notation
 - Student-facing marketing pages for features, workflow, and onboarding
@@ -50,41 +50,11 @@ The product is designed around reviewability. Answers and study tools stay conne
 3. The student asks questions about the uploaded material.
 4. The app finds relevant source sections from that student's documents.
 5. Answers, flashcards, and quizzes are generated from those source sections.
-6. The student can create manual study tools, plan future review sessions, revisit saved answers, and open the exact source section later.
+6. The student can create manual study tools, edit their own sets, revisit saved answers, and reopen richer study sessions later.
 
-## Preview
+## Product Preview
 
-### Landing Page
-
-![StudyStack landing page](public/readme/landing-page.png)
-
-The homepage introduces StudyStack as a focused study workspace for uploading notes, asking questions, and creating review tools.
-
-### Documents
-
-![StudyStack documents page](public/readme/documents-page.png)
-
-The document library lets students upload PDFs, track ready-to-study materials, and manage preview, download, refresh, rename, and delete actions.
-
-### Study Chat
-
-![StudyStack study chat with source citations](public/readme/study-chat.png)
-
-The study chat supports threaded follow-up questions, attachment-style uploads, and source-backed answers with citations that jump back to supporting document sections.
-
-### Flashcards
-
-![StudyStack flashcard study session](public/readme/flashcards-study.png)
-
-The flashcard study page supports generated and manual card sets with a spacious card-by-card review flow, progress, flip behavior, navigation, and source access.
-
-### Quizzes
-
-![StudyStack quiz study session](public/readme/quizzes-study.png)
-
-The quiz page supports generated and manual multiple-choice quizzes with progress tracking, scoring, explanations, and source-backed review.
-
-The preview focuses on the core study workflow. Additional preview coverage could include `/features`, `/how-it-works`, and `/get-started`.
+Updated screenshots can be added here.
 
 ## Getting Started
 
@@ -193,7 +163,7 @@ src/app/(auth)             Sign in, sign up, and auth actions
 src/app/(app)              Protected study app routes
 src/app/api                Server routes for upload finalization
 src/components             Shared UI, app, document, chat, planner, flashcard, and quiz components
-src/lib                    Supabase, OpenAI, PDF, retrieval, document, and security helpers
+src/lib                    Supabase, OpenAI, PDF, retrieval, structured document, and security helpers
 supabase                   Database, RLS, storage, and retrieval SQL setup
 public/brand               StudyStack logo assets
 ```

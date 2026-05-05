@@ -22,6 +22,15 @@ function parseManualCardIds(formData: FormData) {
     .filter(Number.isFinite);
 }
 
+function parseManualCards(formData: FormData) {
+  return parseManualCardIds(formData)
+    .map((id) => ({
+      prompt: String(formData.get(`front-${id}`) ?? "").trim(),
+      answer: String(formData.get(`back-${id}`) ?? "").trim(),
+    }))
+    .filter((card) => card.prompt.length > 0 && card.answer.length > 0);
+}
+
 async function generateAndStoreFlashcards({
   setId,
   title,
@@ -176,13 +185,7 @@ export async function generateFlashcardSet(formData: FormData) {
 export async function createManualFlashcardSet(formData: FormData) {
   const { supabase, user } = await requireStudyToolUser();
   const title = String(formData.get("title") ?? "").trim();
-  const cardIds = parseManualCardIds(formData);
-  const cards = cardIds
-    .map((id) => ({
-      prompt: String(formData.get(`front-${id}`) ?? "").trim(),
-      answer: String(formData.get(`back-${id}`) ?? "").trim(),
-    }))
-    .filter((card) => card.prompt.length > 0 && card.answer.length > 0);
+  const cards = parseManualCards(formData);
 
   if (!title || cards.length === 0) {
     redirect(
@@ -239,6 +242,72 @@ export async function createManualFlashcardSet(formData: FormData) {
       message: "Manual flashcards saved.",
     }).toString()}`,
   );
+}
+
+export async function updateManualFlashcardSet(formData: FormData) {
+  const { supabase, user } = await requireStudyToolUser();
+  const setId = String(formData.get("setId") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  const cards = parseManualCards(formData);
+
+  if (!setId) {
+    redirect(buildStudyToolRedirect("flashcards", { error: "A flashcard set id is required." }));
+  }
+
+  if (!title || cards.length === 0) {
+    redirect(`/flashcards/${setId}?${new URLSearchParams({ error: "Add a title and at least one complete flashcard." }).toString()}`);
+  }
+
+  const { data: set, error: setError } = await supabase
+    .from("flashcard_sets")
+    .select("id, source_mode")
+    .eq("id", setId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (setError || !set) {
+    redirect(buildStudyToolRedirect("flashcards", { error: "That flashcard set could not be found." }));
+  }
+
+  if (set.source_mode !== "manual") {
+    redirect(`/flashcards/${setId}?${new URLSearchParams({ error: "Only manual flashcard sets can be edited directly." }).toString()}`);
+  }
+
+  await supabase.from("flashcards").delete().eq("set_id", setId).eq("user_id", user.id);
+
+  const { error: updateSetError } = await supabase
+    .from("flashcard_sets")
+    .update({
+      title,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", setId)
+    .eq("user_id", user.id);
+
+  if (updateSetError) {
+    redirect(`/flashcards/${setId}?${new URLSearchParams({ error: "The flashcard set could not be updated." }).toString()}`);
+  }
+
+  const { error: cardError } = await supabase.from("flashcards").insert(
+    cards.map((card) => ({
+      set_id: setId,
+      user_id: user.id,
+      prompt: card.prompt,
+      answer: card.answer,
+      source_document_id: null,
+      source_document_title: null,
+      source_chunk_id: null,
+      source_chunk_index: null,
+    })),
+  );
+
+  if (cardError) {
+    redirect(`/flashcards/${setId}?${new URLSearchParams({ error: "The manual flashcards could not be updated." }).toString()}`);
+  }
+
+  revalidatePath("/flashcards");
+  revalidatePath(`/flashcards/${setId}`);
+  redirect(`/flashcards/${setId}?${new URLSearchParams({ message: "Manual flashcard set updated." }).toString()}`);
 }
 
 export async function regenerateFlashcardSet(formData: FormData) {

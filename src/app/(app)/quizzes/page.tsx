@@ -23,6 +23,12 @@ function getSetModeLabel(sourceMode: string) {
   return sourceMode === "manual" ? "Manual" : "From notes";
 }
 
+function getSetModeDescription(sourceMode: string) {
+  return sourceMode === "manual"
+    ? "Custom questions you wrote yourself"
+    : "Generated from your study materials";
+}
+
 export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
   const [{ error: pageError, message }, supabase] = await Promise.all([
     searchParams,
@@ -204,13 +210,17 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-400">
                       <span>{Array.isArray(quizSet.quiz_questions) ? quizSet.quiz_questions.length : 0} questions</span>
-                      <span>
-                      Updated {formatDocumentDate(quizSet.updated_at)}
-                      </span>
+                      <span>Updated {formatDocumentDate(quizSet.updated_at)}</span>
+                      <span>{getSetModeDescription(quizSet.source_mode)}</span>
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
                     <Button href={`/quizzes/${quizSet.id}`}>Start</Button>
+                    {quizSet.source_mode === "manual" ? (
+                      <Button href={`/quizzes/${quizSet.id}`} variant="secondary">
+                        Edit
+                      </Button>
+                    ) : null}
                     <form action={deleteQuizSet}>
                       <input type="hidden" name="setId" value={quizSet.id} />
                       <ConfirmActionSubmitButton

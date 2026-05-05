@@ -1,6 +1,6 @@
 # Security Policy
 
-StudyStack AI handles private study documents, saved chat threads, planner entries, generated study materials, manual study tools, and authenticated user data. Security issues should not be reported in public GitHub issues.
+StudyStack AI handles private study documents, saved chat threads, planner entries, generated study materials, manual study tools, study-session state, and authenticated user data. Security issues should not be reported in public GitHub issues.
 
 ## Reporting a Vulnerability
 

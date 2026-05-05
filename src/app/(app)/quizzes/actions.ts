@@ -22,6 +22,32 @@ function parseManualQuestionIds(formData: FormData) {
     .filter(Number.isFinite);
 }
 
+function parseManualQuestions(formData: FormData) {
+  return parseManualQuestionIds(formData)
+    .map((id) => {
+      const choices = [0, 1, 2, 3].map((choiceIndex) =>
+        String(formData.get(`choice-${id}-${choiceIndex}`) ?? "").trim(),
+      );
+
+      return {
+        question: String(formData.get(`question-${id}`) ?? "").trim(),
+        choices,
+        correctChoiceIndex: Number.parseInt(String(formData.get(`correct-${id}`) ?? ""), 10),
+        explanation:
+          String(formData.get(`explanation-${id}`) ?? "").trim() ||
+          "Review the correct answer and try the question again later.",
+      };
+    })
+    .filter(
+      (question) =>
+        question.question.length > 0 &&
+        question.choices.every((choice) => choice.length > 0) &&
+        Number.isInteger(question.correctChoiceIndex) &&
+        question.correctChoiceIndex >= 0 &&
+        question.correctChoiceIndex <= 3,
+    );
+}
+
 async function generateAndStoreQuiz({
   setId,
   title,
@@ -178,30 +204,7 @@ export async function generateQuizSet(formData: FormData) {
 export async function createManualQuizSet(formData: FormData) {
   const { supabase, user } = await requireStudyToolUser();
   const title = String(formData.get("title") ?? "").trim();
-  const questionIds = parseManualQuestionIds(formData);
-  const questions = questionIds
-    .map((id) => {
-      const choices = [0, 1, 2, 3].map((choiceIndex) =>
-        String(formData.get(`choice-${id}-${choiceIndex}`) ?? "").trim(),
-      );
-
-      return {
-        question: String(formData.get(`question-${id}`) ?? "").trim(),
-        choices,
-        correctChoiceIndex: Number.parseInt(String(formData.get(`correct-${id}`) ?? ""), 10),
-        explanation:
-          String(formData.get(`explanation-${id}`) ?? "").trim() ||
-          "Review the correct answer and try the question again later.",
-      };
-    })
-    .filter(
-      (question) =>
-        question.question.length > 0 &&
-        question.choices.every((choice) => choice.length > 0) &&
-        Number.isInteger(question.correctChoiceIndex) &&
-        question.correctChoiceIndex >= 0 &&
-        question.correctChoiceIndex <= 3,
-    );
+  const questions = parseManualQuestions(formData);
 
   if (!title || questions.length === 0) {
     redirect(
@@ -260,6 +263,74 @@ export async function createManualQuizSet(formData: FormData) {
       message: "Manual quiz saved.",
     }).toString()}`,
   );
+}
+
+export async function updateManualQuizSet(formData: FormData) {
+  const { supabase, user } = await requireStudyToolUser();
+  const setId = String(formData.get("setId") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  const questions = parseManualQuestions(formData);
+
+  if (!setId) {
+    redirect(buildStudyToolRedirect("quizzes", { error: "A quiz set id is required." }));
+  }
+
+  if (!title || questions.length === 0) {
+    redirect(`/quizzes/${setId}?${new URLSearchParams({ error: "Add a title and at least one complete multiple-choice question." }).toString()}`);
+  }
+
+  const { data: set, error: setError } = await supabase
+    .from("quiz_sets")
+    .select("id, source_mode")
+    .eq("id", setId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (setError || !set) {
+    redirect(buildStudyToolRedirect("quizzes", { error: "That quiz set could not be found." }));
+  }
+
+  if (set.source_mode !== "manual") {
+    redirect(`/quizzes/${setId}?${new URLSearchParams({ error: "Only manual quizzes can be edited directly." }).toString()}`);
+  }
+
+  await supabase.from("quiz_questions").delete().eq("set_id", setId).eq("user_id", user.id);
+
+  const { error: updateSetError } = await supabase
+    .from("quiz_sets")
+    .update({
+      title,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", setId)
+    .eq("user_id", user.id);
+
+  if (updateSetError) {
+    redirect(`/quizzes/${setId}?${new URLSearchParams({ error: "The quiz could not be updated." }).toString()}`);
+  }
+
+  const { error: questionError } = await supabase.from("quiz_questions").insert(
+    questions.map((question) => ({
+      set_id: setId,
+      user_id: user.id,
+      question: question.question,
+      choices: question.choices,
+      correct_choice_index: question.correctChoiceIndex,
+      explanation: question.explanation,
+      source_document_id: null,
+      source_document_title: null,
+      source_chunk_id: null,
+      source_chunk_index: null,
+    })),
+  );
+
+  if (questionError) {
+    redirect(`/quizzes/${setId}?${new URLSearchParams({ error: "The manual quiz could not be updated." }).toString()}`);
+  }
+
+  revalidatePath("/quizzes");
+  revalidatePath(`/quizzes/${setId}`);
+  redirect(`/quizzes/${setId}?${new URLSearchParams({ message: "Manual quiz updated." }).toString()}`);
 }
 
 export async function regenerateQuizSet(formData: FormData) {

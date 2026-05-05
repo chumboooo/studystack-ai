@@ -6,20 +6,65 @@ import { Button } from "@/components/ui/button";
 
 type ManualQuizFormProps = {
   action: (formData: FormData) => void | Promise<void>;
+  initialTitle?: string;
+  initialQuestions?: Array<{
+    question: string;
+    choices: string[];
+    correctChoiceIndex: number;
+    explanation: string;
+  }>;
+  submitLabel?: string;
+  pendingLabel?: string;
+  hiddenFields?: Array<{
+    name: string;
+    value: string;
+  }>;
 };
 
 type QuestionDraft = {
   id: number;
+  question: string;
+  choices: string[];
+  correctChoiceIndex: number;
+  explanation: string;
 };
 
 const choiceLabels = ["A", "B", "C", "D"];
 
-export function ManualQuizForm({ action }: ManualQuizFormProps) {
-  const [questions, setQuestions] = useState<QuestionDraft[]>([{ id: 1 }]);
+export function ManualQuizForm({
+  action,
+  initialTitle = "",
+  initialQuestions,
+  submitLabel = "Save manual quiz",
+  pendingLabel = "Saving...",
+  hiddenFields = [],
+}: ManualQuizFormProps) {
+  const [questions, setQuestions] = useState<QuestionDraft[]>(
+    initialQuestions && initialQuestions.length > 0
+      ? initialQuestions.map((question, index) => ({
+          id: index + 1,
+          question: question.question,
+          choices: question.choices,
+          correctChoiceIndex: question.correctChoiceIndex,
+          explanation: question.explanation,
+        }))
+      : [
+          {
+            id: 1,
+            question: "",
+            choices: ["", "", "", ""],
+            correctChoiceIndex: 0,
+            explanation: "",
+          },
+        ],
+  );
   const questionIds = questions.map((question) => question.id).join(",");
 
   return (
     <form action={action} className="space-y-4">
+      {hiddenFields.map((field) => (
+        <input key={field.name} type="hidden" name={field.name} value={field.value} />
+      ))}
       <input type="hidden" name="questionIds" value={questionIds} />
 
       <label className="block space-y-2">
@@ -29,6 +74,7 @@ export function ManualQuizForm({ action }: ManualQuizFormProps) {
           type="text"
           required
           placeholder="Chapter 4 practice quiz"
+          defaultValue={initialTitle}
           className="h-12 w-full rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/40"
         />
       </label>
@@ -62,6 +108,7 @@ export function ManualQuizForm({ action }: ManualQuizFormProps) {
                   name={`question-${question.id}`}
                   required
                   rows={2}
+                  defaultValue={question.question}
                   placeholder="Write a multiple-choice question."
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/40"
                 />
@@ -75,6 +122,7 @@ export function ManualQuizForm({ action }: ManualQuizFormProps) {
                       name={`correct-${question.id}`}
                       value={choiceIndex}
                       required
+                      defaultChecked={question.correctChoiceIndex === choiceIndex}
                       className="h-4 w-4 accent-cyan-300"
                     />
                     <span className="w-5 text-sm font-semibold text-cyan-200">{label}</span>
@@ -82,6 +130,7 @@ export function ManualQuizForm({ action }: ManualQuizFormProps) {
                       name={`choice-${question.id}-${choiceIndex}`}
                       type="text"
                       required
+                      defaultValue={question.choices[choiceIndex] ?? ""}
                       placeholder={`Answer choice ${label}`}
                       className="h-11 min-w-0 flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/40"
                     />
@@ -96,6 +145,7 @@ export function ManualQuizForm({ action }: ManualQuizFormProps) {
                 <textarea
                   name={`explanation-${question.id}`}
                   rows={2}
+                  defaultValue={question.explanation}
                   placeholder="Optional explanation shown after submission."
                   className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/40"
                 />
@@ -112,13 +162,19 @@ export function ManualQuizForm({ action }: ManualQuizFormProps) {
           onClick={() =>
             setQuestions((current) => [
               ...current,
-              { id: Math.max(...current.map((question) => question.id)) + 1 },
+              {
+                id: Math.max(...current.map((question) => question.id)) + 1,
+                question: "",
+                choices: ["", "", "", ""],
+                correctChoiceIndex: 0,
+                explanation: "",
+              },
             ])
           }
         >
           Add question
         </Button>
-        <ActionSubmitButton label="Save manual quiz" pendingLabel="Saving..." />
+        <ActionSubmitButton label={submitLabel} pendingLabel={pendingLabel} />
       </div>
     </form>
   );

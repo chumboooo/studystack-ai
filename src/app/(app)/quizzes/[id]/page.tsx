@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
-import { deleteQuizSet, regenerateQuizSet } from "@/app/(app)/quizzes/actions";
+import { deleteQuizSet, regenerateQuizSet, updateManualQuizSet } from "@/app/(app)/quizzes/actions";
 import { PageHeader } from "@/components/app/page-header";
+import { ManualQuizForm } from "@/components/quizzes/manual-quiz-form";
 import { QuizStudySession } from "@/components/quizzes/quiz-study-session";
 import { ActionSubmitButton } from "@/components/study-tools/action-submit-button";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { Button } from "@/components/ui/button";
+import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatDocumentDate } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
@@ -105,6 +107,29 @@ export default async function QuizStudyPage({ params, searchParams }: QuizStudyP
               />
             </form>
           </div>
+          {set.source_mode === "manual" ? (
+            <Card className="space-y-5">
+              <div>
+                <CardTitle>Edit manual quiz</CardTitle>
+                <CardDescription>
+                  Update question wording, answer choices, and explanations from the same study page.
+                </CardDescription>
+              </div>
+              <ManualQuizForm
+                action={updateManualQuizSet}
+                initialTitle={set.title}
+                initialQuestions={normalizedQuestions.map((question) => ({
+                  question: question.question,
+                  choices: question.choices,
+                  correctChoiceIndex: question.correct_choice_index,
+                  explanation: question.explanation,
+                }))}
+                submitLabel="Save changes"
+                pendingLabel="Updating..."
+                hiddenFields={[{ name: "setId", value: set.id }]}
+              />
+            </Card>
+          ) : null}
           <QuizStudySession questions={normalizedQuestions} />
         </>
       )}

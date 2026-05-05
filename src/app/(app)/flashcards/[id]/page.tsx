@@ -2,12 +2,15 @@ import { notFound } from "next/navigation";
 import {
   deleteFlashcardSet,
   regenerateFlashcardSet,
+  updateManualFlashcardSet,
 } from "@/app/(app)/flashcards/actions";
 import { PageHeader } from "@/components/app/page-header";
 import { FlashcardStudySession } from "@/components/flashcards/flashcard-study-session";
+import { ManualFlashcardForm } from "@/components/flashcards/manual-flashcard-form";
 import { ActionSubmitButton } from "@/components/study-tools/action-submit-button";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { Button } from "@/components/ui/button";
+import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatDocumentDate } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
@@ -106,6 +109,27 @@ export default async function FlashcardStudyPage({
               />
             </form>
           </div>
+          {set.source_mode === "manual" ? (
+            <Card className="space-y-5">
+              <div>
+                <CardTitle>Edit manual flashcards</CardTitle>
+                <CardDescription>
+                  Update prompts, answers, or set size without leaving the study page.
+                </CardDescription>
+              </div>
+              <ManualFlashcardForm
+                action={updateManualFlashcardSet}
+                initialTitle={set.title}
+                initialCards={(cards ?? []).map((card) => ({
+                  prompt: card.prompt,
+                  answer: card.answer,
+                }))}
+                submitLabel="Save changes"
+                pendingLabel="Updating..."
+                hiddenFields={[{ name: "setId", value: set.id }]}
+              />
+            </Card>
+          ) : null}
           <FlashcardStudySession cards={cards} />
         </>
       )}

@@ -23,6 +23,12 @@ function getSetModeLabel(sourceMode: string) {
   return sourceMode === "manual" ? "Manual" : "From notes";
 }
 
+function getSetModeDescription(sourceMode: string) {
+  return sourceMode === "manual"
+    ? "Custom cards you wrote yourself"
+    : "Generated from your study materials";
+}
+
 export default async function FlashcardsPage({ searchParams }: FlashcardsPageProps) {
   const [{ error: pageError, message }, supabase] = await Promise.all([
     searchParams,
@@ -204,13 +210,17 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-400">
                       <span>{Array.isArray(flashcardSet.flashcards) ? flashcardSet.flashcards.length : 0} cards</span>
-                      <span>
-                      Updated {formatDocumentDate(flashcardSet.updated_at)}
-                      </span>
+                      <span>Updated {formatDocumentDate(flashcardSet.updated_at)}</span>
+                      <span>{getSetModeDescription(flashcardSet.source_mode)}</span>
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
                     <Button href={`/flashcards/${flashcardSet.id}`}>Open</Button>
+                    {flashcardSet.source_mode === "manual" ? (
+                      <Button href={`/flashcards/${flashcardSet.id}`} variant="secondary">
+                        Edit
+                      </Button>
+                    ) : null}
                     <form action={deleteFlashcardSet}>
                       <input type="hidden" name="setId" value={flashcardSet.id} />
                       <ConfirmActionSubmitButton

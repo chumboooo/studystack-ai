@@ -25,12 +25,12 @@ npm run dev
 ## Development Guidelines
 
 - Keep changes small and readable.
-- Preserve auth, uploads, documents, threaded chat, planner entries, flashcards, quizzes, manual study tools, and secure preview/download flows.
+- Preserve auth, uploads, documents, threaded chat, planner entries, flashcards, quizzes, manual study tools, richer study sessions, and secure preview/download flows.
 - Keep Supabase user scoping and RLS assumptions intact.
 - Keep OpenAI usage server-side.
 - Avoid exposing internal implementation details in user-facing UI.
 - Prefer student-friendly wording over developer or infrastructure language.
-- Run `npm run build` before opening a PR when possible.
+- Run `npm run lint` and `npm run build` before opening a PR when possible.
 
 ## Pull Requests
 
