@@ -54,7 +54,41 @@ The product is designed around reviewability. Answers and study tools stay conne
 
 ## Product Preview
 
-Updated screenshots can be added here.
+### Landing Page
+
+![StudyStack landing page](/public/readme/landing-page.png)
+
+The landing page introduces the chat-first study workflow and the app's focused student experience.
+
+### Dashboard
+
+![StudyStack dashboard](/public/readme/dashboard.png)
+
+The dashboard acts as a study command center with resume actions, planning, and next-step guidance.
+
+### Study Chat
+
+![StudyStack chat](/public/readme/chat.png)
+
+The chat workspace supports grounded questions over uploaded materials with persistent conversations.
+
+### Documents
+
+![StudyStack documents library](/public/readme/documents.png)
+
+The documents view manages the private source library used for chat, flashcards, and quizzes.
+
+### Flashcards
+
+![StudyStack flashcards study session](/public/readme/flashcards.png)
+
+Flashcard sessions include richer review controls, progress tracking, and a focused study layout.
+
+### Quizzes
+
+![StudyStack quiz study session](/public/readme/quizzes.png)
+
+Quiz sessions provide a more complete test-and-review experience with progress, scoring, and navigation.
 
 ## Getting Started
 
