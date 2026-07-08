@@ -4,8 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { generateGroundedAnswer, type RetrievalChunk } from "@/lib/chat/grounded-answer";
 import { retrieveMultiPartGroundingChunks } from "@/lib/chat/retrieve-grounding";
+import { isDemoSession } from "@/lib/demo/mode";
 import { decomposeQueryParts } from "@/lib/retrieval/query-parts";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { logServerEvent } from "@/lib/server/logger";
 import { createClient } from "@/lib/supabase/server";
+import { validateChatQuestion } from "@/lib/validation";
 
 function buildChatRedirect(params: Record<string, string>) {
   const query = new URLSearchParams(params).toString();
@@ -78,15 +82,39 @@ async function requireChatUser() {
 }
 
 export async function submitGroundedQuestion(formData: FormData) {
-  const { supabase, user } = await requireChatUser();
-
-  const question = String(formData.get("question") ?? "").trim();
-  const sessionId = String(formData.get("sessionId") ?? "").trim();
-
-  if (!question) {
+  if (await isDemoSession()) {
     redirect(
       buildChatRedirect({
-        error: "Enter a question before asking StudyStack.",
+        message: "Demo mode keeps seeded conversations available locally without generating new answers.",
+      }),
+    );
+  }
+
+  const { supabase, user } = await requireChatUser();
+
+  const questionValidation = validateChatQuestion(String(formData.get("question") ?? ""));
+  const sessionId = String(formData.get("sessionId") ?? "").trim();
+
+  if (!questionValidation.ok) {
+    redirect(
+      buildChatRedirect({
+        error: questionValidation.error,
+      }),
+    );
+  }
+
+  const question = questionValidation.value;
+  const rateLimit = checkRateLimit({
+    action: "chat-question",
+    identifier: user.id,
+    limit: 10,
+    windowMs: 5 * 60 * 1000,
+  });
+
+  if (!rateLimit.ok) {
+    redirect(
+      buildChatRedirect({
+        error: `Too many questions were submitted in a short time. Please wait about ${rateLimit.retryAfterSeconds} seconds and try again.`,
         q: question,
       }),
     );
@@ -151,7 +179,13 @@ export async function submitGroundedQuestion(formData: FormData) {
       supabase,
       question: queryPlan.isMultiPart ? question : retrievalQuestion,
     });
-  } catch {
+  } catch (error) {
+    logServerEvent("error", "chat.retrieve_failed", {
+      userId: user.id,
+      sessionId: activeSessionId,
+      error: error instanceof Error ? error.message : "unknown_error",
+    });
+
     redirect(
       buildChatRedirect({
         session: activeSessionId,
@@ -257,6 +291,10 @@ export async function submitGroundedQuestion(formData: FormData) {
 }
 
 export async function deleteChatSession(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildChatRedirect({ message: "Demo conversations are read-only." }));
+  }
+
   const { supabase, user } = await requireChatUser();
 
   const sessionId = String(formData.get("sessionId") ?? "").trim();
@@ -320,6 +358,10 @@ export async function deleteChatSession(formData: FormData) {
 }
 
 export async function deleteChatTurn(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildChatRedirect({ message: "Demo conversations are read-only." }));
+  }
+
   const { supabase, user } = await requireChatUser();
 
   const turnId = String(formData.get("turnId") ?? "").trim();

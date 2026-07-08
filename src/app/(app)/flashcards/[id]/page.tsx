@@ -12,6 +12,8 @@ import { AlertBanner } from "@/components/ui/alert-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { getDemoFlashcardSet } from "@/lib/demo/data";
+import { isDemoSession } from "@/lib/demo/mode";
 import { formatDocumentDate } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
@@ -29,29 +31,44 @@ export default async function FlashcardStudyPage({
   params,
   searchParams,
 }: FlashcardStudyPageProps) {
-  const [{ id }, { error, message }, supabase] = await Promise.all([
+  const [{ id }, { error, message }] = await Promise.all([
     params,
     searchParams,
-    createClient(),
   ]);
+  const demoMode = await isDemoSession();
 
-  const { data: set } = await supabase
-    .from("flashcard_sets")
-    .select("id, title, source_mode, created_at, updated_at")
-    .eq("id", id)
-    .maybeSingle();
+  const demoSet = demoMode ? getDemoFlashcardSet(id) : null;
+  const set = demoSet
+    ? demoSet
+    : (
+        await (async () => {
+          const supabase = await createClient();
+          return supabase
+            .from("flashcard_sets")
+            .select("id, title, source_mode, created_at, updated_at")
+            .eq("id", id)
+            .maybeSingle();
+        })()
+      ).data;
 
   if (!set) {
     notFound();
   }
 
-  const { data: cards } = await supabase
-    .from("flashcards")
-    .select(
-      "id, prompt, answer, source_document_id, source_document_title, source_chunk_index, created_at",
-    )
-    .eq("set_id", set.id)
-    .order("created_at", { ascending: true });
+  const cards = demoMode
+    ? demoSet?.cards ?? null
+    : (
+        await (async () => {
+          const supabase = await createClient();
+          return supabase
+            .from("flashcards")
+            .select(
+              "id, prompt, answer, source_document_id, source_document_title, source_chunk_index, created_at",
+            )
+            .eq("set_id", set.id)
+            .order("created_at", { ascending: true });
+        })()
+      ).data;
 
   return (
     <div className="space-y-8">
@@ -73,6 +90,11 @@ export default async function FlashcardStudyPage({
 
       {error ? <AlertBanner tone="error">{error}</AlertBanner> : null}
       {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
+      {demoMode ? (
+        <AlertBanner tone="info">
+          Demo mode keeps this flashcard study session fully interactive while editing and destructive actions remain off.
+        </AlertBanner>
+      ) : null}
 
       {!cards || cards.length === 0 ? (
         <EmptyState
@@ -93,23 +115,25 @@ export default async function FlashcardStudyPage({
       ) : (
         <>
           <div className="flex flex-wrap justify-end gap-3">
-            {set.source_mode === "manual" ? null : (
+            {!demoMode && set.source_mode !== "manual" ? (
               <form action={regenerateFlashcardSet}>
                 <input type="hidden" name="setId" value={set.id} />
                 <ActionSubmitButton label="Regenerate set" pendingLabel="Regenerating..." />
               </form>
-            )}
-            <form action={deleteFlashcardSet}>
-              <input type="hidden" name="setId" value={set.id} />
-              <ActionSubmitButton
-                label="Delete set"
-                pendingLabel="Deleting..."
-                variant="ghost"
-                className="border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
-              />
-            </form>
+            ) : null}
+            {!demoMode ? (
+              <form action={deleteFlashcardSet}>
+                <input type="hidden" name="setId" value={set.id} />
+                <ActionSubmitButton
+                  label="Delete set"
+                  pendingLabel="Deleting..."
+                  variant="ghost"
+                  className="border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
+                />
+              </form>
+            ) : null}
           </div>
-          {set.source_mode === "manual" ? (
+          {!demoMode && set.source_mode === "manual" ? (
             <Card className="space-y-5">
               <div>
                 <CardTitle>Edit manual flashcards</CardTitle>

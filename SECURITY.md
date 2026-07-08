@@ -25,7 +25,9 @@ This project is designed to keep privileged operations server-side:
 - Supabase browser clients use a low-privilege public key.
 - User-owned data relies on Supabase Row Level Security.
 - Uploaded PDFs are stored in a private Supabase Storage bucket.
+- Browser-to-storage PDF uploads are finalized server-side and cleaned up if preparation fails.
 - PDF preview and download are served through authenticated routes.
+- Expensive user actions are throttled server-side to reduce abuse and accidental spikes.
 - Chat sessions, planner entries, flashcards, quizzes, and document actions are scoped to the signed-in user.
 - Browser security headers are configured in `next.config.ts`.
 

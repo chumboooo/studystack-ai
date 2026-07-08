@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { clearDemoSessionCookie } from "@/lib/demo/mode";
 import { createClient } from "@/lib/supabase/server";
 import { getSiteUrl } from "@/lib/site-url";
 
@@ -22,6 +23,7 @@ export async function signIn(formData: FormData) {
   }
 
   const supabase = await createClient();
+  await clearDemoSessionCookie();
   const { error } = await supabase.auth.signInWithPassword({
     email,
     password,
@@ -52,6 +54,7 @@ export async function signUp(formData: FormData) {
   }
 
   const supabase = await createClient();
+  await clearDemoSessionCookie();
   const siteUrl = await getSiteUrl();
   const { data, error } = await supabase.auth.signUp({
     email,

@@ -2,12 +2,8 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import {
-  isAllowedPdfMetadata,
-  PDF_MIME_TYPE,
-  sanitizeUploadFileName,
-} from "@/lib/documents/upload-validation";
+import { uploadPdfFromBrowser } from "@/lib/documents/browser-upload";
+import { isAllowedPdfMetadata, PDF_MIME_TYPE } from "@/lib/documents/upload-validation";
 
 type ChatAttachmentUploadProps = {
   userId: string;
@@ -38,65 +34,27 @@ export function ChatAttachmentUpload({ userId, bucket }: ChatAttachmentUploadPro
       setError(null);
       setStatus("Uploading PDF...");
 
-      const supabase = createClient();
-      const safeFileName = sanitizeUploadFileName(fileEntry.name);
-      const filePath = `${userId}/${crypto.randomUUID()}-${safeFileName}`;
-      const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, fileEntry, {
-        contentType: PDF_MIME_TYPE,
-        upsert: false,
+      setStatus("Preparing PDF...");
+      const result = await uploadPdfFromBrowser({
+        userId,
+        bucket,
+        file: fileEntry,
       });
 
-      if (uploadError) {
+      if (!result.ok) {
         setStatus(null);
-        setError(
-          uploadError.message.includes("maximum allowed size")
-            ? "That PDF is larger than the current upload limit."
-            : "The PDF could not be uploaded. Please try again.",
-        );
+        setError(result.error);
+        router.refresh();
         return;
       }
 
-      setStatus("Preparing PDF...");
-
-      try {
-        const response = await fetch("/api/documents/upload", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            title: "",
-            fileName: fileEntry.name,
-            filePath,
-            fileSize: fileEntry.size,
-            mimeType: fileEntry.type || PDF_MIME_TYPE,
-          }),
-        });
-
-        const result = (await response.json()) as {
-          ok?: boolean;
-          error?: string;
-          message?: string;
-        };
-
-        if (!response.ok || result.ok === false) {
-          setStatus(null);
-          setError(result.error ?? "The uploaded PDF could not be prepared.");
-          router.refresh();
-          return;
-        }
-
-        if (inputRef.current) {
-          inputRef.current.value = "";
-        }
-
-        setStatus("PDF attached. Ask a question when ready.");
-        setError(null);
-        router.refresh();
-      } catch {
-        setStatus(null);
-        setError("The upload could not be completed. Please try again.");
+      if (inputRef.current) {
+        inputRef.current.value = "";
       }
+
+      setStatus("PDF attached. Ask a question when ready.");
+      setError(null);
+      router.refresh();
     });
   }
 

@@ -16,16 +16,17 @@ const appNavItems = [
 
 type SidebarProps = {
   userEmail?: string;
+  isDemoMode?: boolean;
 };
 
-export function Sidebar({ userEmail }: SidebarProps) {
+export function Sidebar({ userEmail, isDemoMode = false }: SidebarProps) {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden w-80 shrink-0 border-r border-white/10 bg-slate-950/70 px-6 py-8 lg:flex lg:flex-col">
+    <aside className="hidden w-72 shrink-0 border-r border-white/8 bg-slate-950/55 px-5 py-7 lg:flex lg:flex-col">
       <Logo href="/" />
 
-      <div className="mt-10 rounded-3xl border border-white/10 bg-white/[0.04] p-3">
+      <div className="mt-9 rounded-[1.75rem] border border-white/8 bg-white/[0.03] p-2.5">
         <nav className="space-y-2">
           {appNavItems.map((item) => {
             const active = pathname === item.href;
@@ -35,7 +36,7 @@ export function Sidebar({ userEmail }: SidebarProps) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                    "flex items-center gap-4 rounded-2xl px-4 py-3 transition-colors",
+                    "flex items-center gap-4 rounded-2xl px-3.5 py-3 transition-colors",
                   active
                     ? "bg-cyan-300 text-slate-950"
                     : "text-slate-300 hover:bg-white/[0.07] hover:text-white",
@@ -63,12 +64,21 @@ export function Sidebar({ userEmail }: SidebarProps) {
         </nav>
       </div>
 
-      <div className="mt-auto rounded-3xl border border-cyan-300/15 bg-cyan-300/[0.08] p-5">
+      <div className="mt-auto rounded-[1.75rem] border border-white/8 bg-white/[0.03] p-4.5">
         <p className="text-sm font-semibold text-white">{userEmail ?? "Signed in"}</p>
-        <p className="mt-2 text-sm leading-6 text-slate-300">
+        {isDemoMode ? (
+          <p className="mt-2 inline-flex rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-cyan-100">
+            Preview
+          </p>
+        ) : null}
+        <p className="mt-2 text-sm leading-6 text-slate-400">
           Keep your notes, questions, flashcards, and quizzes organized in one place.
         </p>
-        <SignOutButton variant="ghost" className="mt-4 w-full justify-center border border-white/10" />
+        <SignOutButton
+          variant="ghost"
+          className="mt-4 w-full justify-center border border-white/10"
+          isDemoMode={isDemoMode}
+        />
       </div>
     </aside>
   );

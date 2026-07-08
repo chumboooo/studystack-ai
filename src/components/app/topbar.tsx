@@ -15,9 +15,10 @@ const mobileNavItems = [
 
 type TopbarProps = {
   userEmail?: string;
+  isDemoMode?: boolean;
 };
 
-export function Topbar({ userEmail }: TopbarProps) {
+export function Topbar({ userEmail, isDemoMode = false }: TopbarProps) {
   const pathname = usePathname();
 
   return (
@@ -28,8 +29,13 @@ export function Topbar({ userEmail }: TopbarProps) {
             StudyStack AI
           </p>
           <p className="text-sm text-slate-300">{userEmail ?? "Dashboard workspace"}</p>
+          {isDemoMode ? (
+            <p className="mt-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+              Preview
+            </p>
+          ) : null}
         </div>
-        <SignOutButton variant="secondary" size="md" />
+        <SignOutButton variant="secondary" size="md" isDemoMode={isDemoMode} />
       </div>
       <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
         {mobileNavItems.map((item) => (

@@ -14,6 +14,8 @@ import { AlertBanner } from "@/components/ui/alert-banner";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MathText } from "@/components/ui/math-text";
+import { getDemoDocument } from "@/lib/demo/data";
+import { isDemoSession } from "@/lib/demo/mode";
 import { buildDocumentFileUrl, formatDocumentDate, formatFileSize } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
@@ -42,20 +44,48 @@ export default async function DocumentDetailPage({
   params,
   searchParams,
 }: DocumentDetailPageProps) {
-  const [{ id }, { chunk, error: pageError, message }, supabase] = await Promise.all([
+  const [{ id }, { chunk, error: pageError, message }] = await Promise.all([
     params,
     searchParams,
-    createClient(),
   ]);
+  const demoMode = await isDemoSession();
   const selectedChunkIndex = Number.isFinite(Number(chunk)) ? Number(chunk) : null;
+  const { document, error } = demoMode
+    ? (() => {
+        const demoDocument = getDemoDocument(id);
 
-  const { data: document, error } = await supabase
-    .from("documents")
-    .select(
-      "id, title, file_name, file_path, file_size, mime_type, created_at, document_contents(extraction_status, page_count, chunk_count, raw_text, error_message), document_chunks(id, chunk_index, content, character_count, created_at)",
-    )
-    .eq("id", id)
-    .maybeSingle();
+        return {
+          document: demoDocument
+            ? {
+                ...demoDocument,
+                document_contents: {
+                  extraction_status: demoDocument.extraction_status,
+                  page_count: demoDocument.page_count,
+                  chunk_count: demoDocument.chunk_count,
+                  raw_text: demoDocument.raw_text,
+                  error_message: demoDocument.error_message,
+                },
+                document_chunks: demoDocument.chunks,
+              }
+            : null,
+          error: null,
+        };
+      })()
+    : await (async () => {
+        const supabase = await createClient();
+        const result = await supabase
+          .from("documents")
+          .select(
+            "id, title, file_name, file_path, file_size, mime_type, created_at, document_contents(extraction_status, page_count, chunk_count, raw_text, error_message), document_chunks(id, chunk_index, content, character_count, created_at)",
+          )
+          .eq("id", id)
+          .maybeSingle();
+
+        return {
+          document: result.data,
+          error: result.error,
+        };
+      })();
 
   if (error) {
     return (
@@ -98,42 +128,51 @@ export default async function DocumentDetailPage({
               Back to documents
             </Button>
             <Button href="/chat">Ask questions</Button>
-            <Button
-              href={buildDocumentFileUrl(document.id, "view")}
-              variant="secondary"
-              external
-              target="_blank"
-              rel="noreferrer"
-            >
-              View PDF
-            </Button>
-            <Button
-              href={buildDocumentFileUrl(document.id, "download")}
-              variant="secondary"
-              external
-            >
-              Download PDF
-            </Button>
-            <ReprocessDocumentForm
-              action={reprocessDocumentFromDetail}
-              documentId={document.id}
-              redirectTo={`/documents/${document.id}`}
-              label="Refresh document"
-              pendingLabel="Refreshing..."
-              className="justify-center border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20"
-            />
-            <DeleteDocumentForm
-              action={deleteDocumentFromDetail}
-              documentId={document.id}
-              redirectTo="/documents"
-              confirmMessage={`Delete "${document.title}" and its saved study data? This cannot be undone.`}
-              label="Delete document"
-              pendingLabel="Deleting..."
-              className="justify-center border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
-            />
+            {!demoMode ? (
+              <>
+                <Button
+                  href={buildDocumentFileUrl(document.id, "view")}
+                  variant="secondary"
+                  external
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View PDF
+                </Button>
+                <Button
+                  href={buildDocumentFileUrl(document.id, "download")}
+                  variant="secondary"
+                  external
+                >
+                  Download PDF
+                </Button>
+                <ReprocessDocumentForm
+                  action={reprocessDocumentFromDetail}
+                  documentId={document.id}
+                  redirectTo={`/documents/${document.id}`}
+                  label="Refresh document"
+                  pendingLabel="Refreshing..."
+                  className="justify-center border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20"
+                />
+                <DeleteDocumentForm
+                  action={deleteDocumentFromDetail}
+                  documentId={document.id}
+                  redirectTo="/documents"
+                  confirmMessage={`Delete "${document.title}" and its saved study data? This cannot be undone.`}
+                  label="Delete document"
+                  pendingLabel="Deleting..."
+                  className="justify-center border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
+                />
+              </>
+            ) : null}
           </>
         }
       />
+      {demoMode ? (
+        <AlertBanner tone="info">
+          Demo mode shows a seeded source document with extracted text and saved sections. File actions stay read-only here.
+        </AlertBanner>
+      ) : null}
 
       {pageError ? <AlertBanner tone="error">{pageError}</AlertBanner> : null}
 
@@ -163,12 +202,18 @@ export default async function DocumentDetailPage({
                   </span>
                 </div>
                 <div className="mt-4">
-                  <DocumentTitleForm
-                    action={renameDocumentFromDetail}
-                    documentId={document.id}
-                    initialTitle={document.title}
-                    redirectTo={`/documents/${document.id}`}
-                  />
+                  {demoMode ? (
+                    <div className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3 text-sm font-medium text-white">
+                      {document.title}
+                    </div>
+                  ) : (
+                    <DocumentTitleForm
+                      action={renameDocumentFromDetail}
+                      documentId={document.id}
+                      initialTitle={document.title}
+                      redirectTo={`/documents/${document.id}`}
+                    />
+                  )}
                 </div>
               </div>
 

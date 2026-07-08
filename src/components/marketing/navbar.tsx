@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
+import { isDemoModeEnabled } from "@/lib/demo/mode";
 
 const navItems = [
   { href: "/features", label: "Features" },
@@ -9,6 +10,8 @@ const navItems = [
 ];
 
 export function Navbar() {
+  const demoAvailable = isDemoModeEnabled();
+
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 sm:px-10">
@@ -21,6 +24,11 @@ export function Navbar() {
           ))}
         </nav>
         <div className="flex items-center gap-3">
+          {demoAvailable ? (
+            <Button href="/demo" variant="ghost" className="hidden sm:inline-flex">
+              Try demo
+            </Button>
+          ) : null}
           <Button href="/sign-in" variant="ghost" className="hidden sm:inline-flex">
             Sign in
           </Button>

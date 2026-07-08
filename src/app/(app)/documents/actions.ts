@@ -6,7 +6,10 @@ import {
   DEFAULT_DOCUMENTS_BUCKET,
   runDocumentExtraction,
 } from "@/lib/documents/processing";
+import { isDemoSession } from "@/lib/demo/mode";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createClient } from "@/lib/supabase/server";
+import { validateDocumentTitle } from "@/lib/validation";
 
 function buildRedirect(params: Record<string, string>) {
   return `/documents?${new URLSearchParams(params).toString()}`;
@@ -111,10 +114,12 @@ async function updateStoredDocumentTitle({
 
   const normalizedTitle = title.trim();
 
-  if (!normalizedTitle) {
+  const titleValidation = validateDocumentTitle(normalizedTitle);
+
+  if (!titleValidation.ok) {
     redirect(
       buildScopedRedirect(redirectTo, {
-        error: "Document title cannot be empty.",
+        error: titleValidation.error,
       }),
     );
   }
@@ -142,7 +147,7 @@ async function updateStoredDocumentTitle({
     );
   }
 
-  if (document.title === normalizedTitle) {
+  if (document.title === titleValidation.value) {
     redirect(
       buildScopedRedirect(redirectTo, {
         message: "The document title is already up to date.",
@@ -153,7 +158,7 @@ async function updateStoredDocumentTitle({
   const { error: updateError } = await supabase
     .from("documents")
     .update({
-      title: normalizedTitle,
+      title: titleValidation.value,
     })
     .eq("id", document.id)
     .eq("user_id", user.id);
@@ -172,13 +177,17 @@ async function updateStoredDocumentTitle({
   revalidatePath("/chat");
 
   redirect(
-    buildScopedRedirect(redirectTo, {
-      message: `Document renamed to "${normalizedTitle}".`,
+      buildScopedRedirect(redirectTo, {
+      message: `Document renamed to "${titleValidation.value}".`,
     }),
   );
 }
 
 export async function deleteDocumentFromList(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildRedirect({ message: "Document actions are disabled in demo mode." }));
+  }
+
   const documentId = String(formData.get("documentId") ?? "").trim();
 
   if (!documentId) {
@@ -196,6 +205,10 @@ export async function deleteDocumentFromList(formData: FormData) {
 }
 
 export async function deleteDocumentFromDetail(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildRedirect({ message: "Document actions are disabled in demo mode." }));
+  }
+
   const documentId = String(formData.get("documentId") ?? "").trim();
   const redirectTo = String(formData.get("redirectTo") ?? "/documents").trim() || "/documents";
 
@@ -252,6 +265,21 @@ async function reprocessStoredDocument({
     );
   }
 
+  const reprocessRateLimit = checkRateLimit({
+    action: "document-reprocess",
+    identifier: user.id,
+    limit: 8,
+    windowMs: 15 * 60 * 1000,
+  });
+
+  if (!reprocessRateLimit.ok) {
+    redirect(
+      buildScopedRedirect(redirectTo, {
+        error: `Too many document refreshes were started in a short time. Please wait about ${reprocessRateLimit.retryAfterSeconds} seconds and try again.`,
+      }),
+    );
+  }
+
   const bucket = process.env.SUPABASE_DOCUMENTS_BUCKET || DEFAULT_DOCUMENTS_BUCKET;
   const { data: downloadedFile, error: downloadError } = await supabase.storage
     .from(bucket)
@@ -288,6 +316,10 @@ async function reprocessStoredDocument({
 }
 
 export async function reprocessDocumentFromList(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildRedirect({ message: "Document refresh is disabled in demo mode." }));
+  }
+
   const documentId = String(formData.get("documentId") ?? "").trim();
 
   if (!documentId) {
@@ -305,6 +337,10 @@ export async function reprocessDocumentFromList(formData: FormData) {
 }
 
 export async function reprocessDocumentFromDetail(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildRedirect({ message: "Document refresh is disabled in demo mode." }));
+  }
+
   const documentId = String(formData.get("documentId") ?? "").trim();
   const redirectTo = String(formData.get("redirectTo") ?? "/documents").trim() || "/documents";
 
@@ -323,6 +359,10 @@ export async function reprocessDocumentFromDetail(formData: FormData) {
 }
 
 export async function renameDocumentFromList(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildRedirect({ message: "Document renaming is disabled in demo mode." }));
+  }
+
   const documentId = String(formData.get("documentId") ?? "").trim();
   const title = String(formData.get("title") ?? "");
 
@@ -342,6 +382,10 @@ export async function renameDocumentFromList(formData: FormData) {
 }
 
 export async function renameDocumentFromDetail(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildRedirect({ message: "Document renaming is disabled in demo mode." }));
+  }
+
   const documentId = String(formData.get("documentId") ?? "").trim();
   const title = String(formData.get("title") ?? "");
   const redirectTo = String(formData.get("redirectTo") ?? "/documents").trim() || "/documents";

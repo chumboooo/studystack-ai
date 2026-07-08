@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { createPlannerEntry, deletePlannerEntry } from "@/app/(app)/dashboard/actions";
+import { PageHeader } from "@/components/app/page-header";
 import { StudyPlannerCalendar } from "@/components/dashboard/study-planner-calendar";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
+import { getDemoWorkspaceData } from "@/lib/demo/data";
+import { isDemoSession } from "@/lib/demo/mode";
 import { formatDocumentDate } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,44 +22,90 @@ function getCount(value: unknown) {
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
-  const [{ error: pageError, message }, supabase] = await Promise.all([
-    searchParams,
-    createClient(),
-  ]);
+  const [{ error: pageError, message }] = await Promise.all([searchParams]);
+  const demoMode = await isDemoSession();
 
-  const [
-    { data: documents },
-    { data: chatSessions },
-    { data: flashcardSets },
-    { data: quizSets },
-    { data: plannerEntries, error: plannerError },
-  ] = await Promise.all([
-    supabase
-      .from("documents")
-      .select("id, title, created_at, document_contents(extraction_status)")
-      .order("created_at", { ascending: false })
-      .limit(8),
-    supabase
-      .from("chat_sessions")
-      .select("id, title, updated_at")
-      .order("updated_at", { ascending: false })
-      .limit(3),
-    supabase
-      .from("flashcard_sets")
-      .select("id, title, source_mode, updated_at, flashcards(id)")
-      .order("updated_at", { ascending: false })
-      .limit(3),
-    supabase
-      .from("quiz_sets")
-      .select("id, title, source_mode, updated_at, quiz_questions(id)")
-      .order("updated_at", { ascending: false })
-      .limit(3),
-    supabase
-      .from("study_planner_entries")
-      .select("id, title, entry_date, entry_type, note, created_at")
-      .order("entry_date", { ascending: true })
-      .limit(12),
-  ]);
+  const [documents, chatSessions, flashcardSets, quizSets, plannerEntries, plannerError] = demoMode
+    ? (() => {
+        const demoData = getDemoWorkspaceData();
+
+        return [
+          demoData.documents.map((document) => ({
+            id: document.id,
+            title: document.title,
+            created_at: document.created_at,
+            document_contents: {
+              extraction_status: document.extraction_status,
+            },
+          })),
+          demoData.chatSessions.map((session) => ({
+            id: session.id,
+            title: session.title,
+            updated_at: session.updated_at,
+          })),
+          demoData.flashcardSets.map((set) => ({
+            id: set.id,
+            title: set.title,
+            source_mode: set.source_mode,
+            updated_at: set.updated_at,
+            flashcards: set.cards.map((card) => ({ id: card.id })),
+          })),
+          demoData.quizSets.map((set) => ({
+            id: set.id,
+            title: set.title,
+            source_mode: set.source_mode,
+            updated_at: set.updated_at,
+            quiz_questions: set.questions.map((question) => ({ id: question.id })),
+          })),
+          demoData.plannerEntries,
+          null,
+        ] as const;
+      })()
+    : await (async () => {
+        const supabase = await createClient();
+        const [
+          { data: documentsData },
+          { data: chatSessionsData },
+          { data: flashcardSetsData },
+          { data: quizSetsData },
+          { data: plannerEntriesData, error: plannerEntriesError },
+        ] = await Promise.all([
+          supabase
+            .from("documents")
+            .select("id, title, created_at, document_contents(extraction_status)")
+            .order("created_at", { ascending: false })
+            .limit(8),
+          supabase
+            .from("chat_sessions")
+            .select("id, title, updated_at")
+            .order("updated_at", { ascending: false })
+            .limit(3),
+          supabase
+            .from("flashcard_sets")
+            .select("id, title, source_mode, updated_at, flashcards(id)")
+            .order("updated_at", { ascending: false })
+            .limit(3),
+          supabase
+            .from("quiz_sets")
+            .select("id, title, source_mode, updated_at, quiz_questions(id)")
+            .order("updated_at", { ascending: false })
+            .limit(3),
+          supabase
+            .from("study_planner_entries")
+            .select("id, title, entry_date, entry_type, note, created_at")
+            .order("entry_date", { ascending: true })
+            .limit(12),
+        ]);
+
+        return [
+          documentsData ?? [],
+          chatSessionsData ?? [],
+          flashcardSetsData ?? [],
+          quizSetsData ?? [],
+          plannerEntriesData ?? [],
+          plannerEntriesError,
+        ] as const;
+      })();
 
   const normalizedDocuments = (documents ?? []).map((document) => ({
     ...document,
@@ -69,10 +118,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   );
   const latestReadyDocument = readyDocuments[0] ?? null;
   const latestDocument = normalizedDocuments[0] ?? null;
-  const latestChat = chatSessions?.[0] ?? null;
-  const latestFlashcards = flashcardSets?.[0] ?? null;
-  const latestQuiz = quizSets?.[0] ?? null;
-  const plans = plannerEntries ?? [];
+  const latestChat = chatSessions[0] ?? null;
+  const latestFlashcards = flashcardSets[0] ?? null;
+  const latestQuiz = quizSets[0] ?? null;
+  const plans = plannerEntries;
 
   const recommendedStep = (() => {
     if (!latestDocument) {
@@ -163,32 +212,29 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   return (
     <div className="space-y-6">
-      <section className="surface-enter rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.22)] sm:p-7">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-3xl">
-            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
-              Study command center
-            </span>
-            <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
-              Decide what to study next.
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-              Resume your work, plan upcoming study sessions, and jump into the next useful action.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
+      <PageHeader
+        badge="Dashboard"
+        title="Decide what to study next."
+        description="Resume your work, plan upcoming study sessions, and move straight into the next useful action."
+        actions={
+          <>
             <Button href="/chat?new=1">Ask a question</Button>
             <Button href="#study-planner" variant="secondary">
               Add study plan
             </Button>
-          </div>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       {pageError ? <AlertBanner tone="error">{pageError}</AlertBanner> : null}
       {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
       {plannerError ? (
         <AlertBanner tone="error">Study planner entries could not load right now.</AlertBanner>
+      ) : null}
+      {demoMode ? (
+        <AlertBanner tone="info">
+          Demo mode uses seeded study data for the dashboard and planner so the workspace can be shown without a live database.
+        </AlertBanner>
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
@@ -215,12 +261,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
         </Card>
 
-        <Card className="surface-enter space-y-5 border-cyan-300/15 bg-cyan-300/[0.06]">
+        <Card className="surface-enter space-y-5">
           <div>
             <CardTitle>Recommended next step</CardTitle>
             <CardDescription>{recommendedStep.detail}</CardDescription>
           </div>
-          <div className="rounded-2xl border border-cyan-300/20 bg-slate-950/45 p-5">
+          <div className="rounded-2xl border border-white/10 bg-slate-950/35 p-5">
             <p className="text-xl font-semibold text-white">{recommendedStep.title}</p>
             <Button href={recommendedStep.href} className="mt-5">
               {recommendedStep.action}

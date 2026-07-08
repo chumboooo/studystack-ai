@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isDemoSession } from "@/lib/demo/mode";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createClient } from "@/lib/supabase/server";
+import { validatePlannerEntry } from "@/lib/validation";
 
 function buildDashboardRedirect(params: Record<string, string>) {
   const query = new URLSearchParams(params).toString();
@@ -24,38 +27,50 @@ async function requireDashboardUser() {
 }
 
 export async function createPlannerEntry(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(
+      buildDashboardRedirect({
+        message: "Demo planner data is read-only. Use the seeded entries to show the calendar experience.",
+      }),
+    );
+  }
+
   const { supabase, user } = await requireDashboardUser();
-  const title = String(formData.get("title") ?? "").trim().slice(0, 140);
-  const entryDate = String(formData.get("entryDate") ?? "").trim();
-  const entryType = String(formData.get("entryType") ?? "study_session").trim();
-  const note = String(formData.get("note") ?? "").trim().slice(0, 600);
+  const validation = validatePlannerEntry({
+    title: String(formData.get("title") ?? ""),
+    entryDate: String(formData.get("entryDate") ?? "").trim(),
+    entryType: String(formData.get("entryType") ?? "study_session").trim(),
+    note: String(formData.get("note") ?? ""),
+  });
 
-  if (!title || !entryDate) {
+  if (!validation.ok) {
     redirect(
       buildDashboardRedirect({
-        error: "Add a title and date for the study plan.",
+        error: validation.error,
       }),
     );
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate)) {
+  const createRateLimit = checkRateLimit({
+    action: "planner-create",
+    identifier: user.id,
+    limit: 20,
+    windowMs: 10 * 60 * 1000,
+  });
+
+  if (!createRateLimit.ok) {
     redirect(
       buildDashboardRedirect({
-        error: "Choose a valid calendar date for the study plan.",
+        error: `Too many planner changes were made in a short time. Please wait about ${createRateLimit.retryAfterSeconds} seconds and try again.`,
       }),
     );
   }
-
-  const allowedTypes = new Set(["study_session", "quiz_review", "exam_prep", "reminder"]);
-  const normalizedEntryType = (
-    allowedTypes.has(entryType) ? entryType : "study_session"
-  ) as "exam_prep" | "quiz_review" | "reminder" | "study_session";
   const { error } = await supabase.from("study_planner_entries").insert({
     user_id: user.id,
-    title,
-    entry_date: entryDate,
-    entry_type: normalizedEntryType,
-    note: note || null,
+    title: validation.value.title,
+    entry_date: validation.value.entryDate,
+    entry_type: validation.value.entryType,
+    note: validation.value.note,
   });
 
   if (error) {
@@ -75,6 +90,14 @@ export async function createPlannerEntry(formData: FormData) {
 }
 
 export async function deletePlannerEntry(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(
+      buildDashboardRedirect({
+        message: "Demo planner entries are read-only in local showcase mode.",
+      }),
+    );
+  }
+
   const { supabase, user } = await requireDashboardUser();
   const entryId = String(formData.get("entryId") ?? "").trim();
 
@@ -82,6 +105,21 @@ export async function deletePlannerEntry(formData: FormData) {
     redirect(
       buildDashboardRedirect({
         error: "Choose a study plan to delete.",
+      }),
+    );
+  }
+
+  const deleteRateLimit = checkRateLimit({
+    action: "planner-delete",
+    identifier: user.id,
+    limit: 20,
+    windowMs: 10 * 60 * 1000,
+  });
+
+  if (!deleteRateLimit.ok) {
+    redirect(
+      buildDashboardRedirect({
+        error: `Too many planner changes were made in a short time. Please wait about ${deleteRateLimit.retryAfterSeconds} seconds and try again.`,
       }),
     );
   }

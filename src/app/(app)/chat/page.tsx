@@ -5,6 +5,9 @@ import { DeleteChatSessionForm, DeleteChatTurnForm } from "@/components/chat/del
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { Button } from "@/components/ui/button";
 import { MathText } from "@/components/ui/math-text";
+import { PageHeader } from "@/components/app/page-header";
+import { getDemoWorkspaceData } from "@/lib/demo/data";
+import { isDemoSession } from "@/lib/demo/mode";
 import { buildDocumentChunkUrl, formatDocumentDate } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
@@ -67,92 +70,177 @@ function formatAnswerForDisplay(content: string) {
     .trim();
 }
 
+type ChatTurnSummary = {
+  id: string;
+  session_id: string;
+  question: string;
+  answer: string;
+  status: "completed" | "failed" | "no_sources";
+  error_message: string | null;
+  created_at: string;
+};
+
 export default async function ChatPage({ searchParams }: ChatPageProps) {
-  const [{ error: pageError, message, q, new: newThread, session, turn }, supabase] = await Promise.all([
+  const [{ error: pageError, message, q, new: newThread, session, turn }] = await Promise.all([
     searchParams,
-    createClient(),
   ]);
   const draftQuestion = q?.trim() ?? "";
   const startsFreshThread = newThread === "1";
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const demoMode = await isDemoSession();
   const uploadBucket = process.env.SUPABASE_DOCUMENTS_BUCKET || "documents";
+  const loadedChatState = demoMode
+    ? (() => {
+        const demoData = getDemoWorkspaceData();
+        const sessions = demoData.chatSessions.map((entry) => ({
+          id: entry.id,
+          title: entry.title,
+          updated_at: entry.updated_at,
+        }));
+        const allTurns: ChatTurnSummary[] = demoData.chatSessions.flatMap((entry) =>
+          entry.turns.map((chatTurn) => ({
+            id: chatTurn.id,
+            session_id: chatTurn.session_id,
+            question: chatTurn.question,
+            answer: chatTurn.answer,
+            status: chatTurn.status,
+            error_message: chatTurn.error_message,
+            created_at: chatTurn.created_at,
+          })),
+        );
+        let selectedTurn =
+          !startsFreshThread && turn && turn.trim().length > 0
+            ? allTurns.find((entry) => entry.id === turn) ?? null
+            : null;
+        const activeSessionId =
+          startsFreshThread
+            ? null
+            : selectedTurn?.session_id ??
+              (session && session.trim().length > 0 ? session : sessions[0]?.id ?? null);
+        const activeSessionTurns = activeSessionId
+          ? (demoData.chatSessions.find((entry) => entry.id === activeSessionId)?.turns ?? []).map((entry) => ({
+              id: entry.id,
+              session_id: entry.session_id,
+              question: entry.question,
+              answer: entry.answer,
+              status: entry.status,
+              error_message: entry.error_message,
+              created_at: entry.created_at,
+            }))
+          : [];
 
-  const { data: sessionsData, error: sessionsError } = await supabase
-    .from("chat_sessions")
-    .select("id, title, updated_at")
-    .order("updated_at", { ascending: false })
-    .limit(10);
+        if (!selectedTurn && activeSessionTurns.length > 0) {
+          selectedTurn = activeSessionTurns[activeSessionTurns.length - 1];
+        }
 
-  const sessions = sessionsData ?? [];
+        const activeSourcesData =
+          activeSessionId
+            ? (demoData.chatSessions.find((entry) => entry.id === activeSessionId)?.turns ?? []).flatMap((chatTurn) =>
+                chatTurn.sources.map((source) => ({
+                  ...source,
+                  turn_id: chatTurn.id,
+                })),
+              )
+            : [];
 
-  let selectedTurn =
-    !startsFreshThread && turn && turn.trim().length > 0
-      ? (
-          await supabase
-            .from("chat_turns")
-            .select("id, session_id, question, answer, status, error_message, created_at")
-            .eq("id", turn)
-            .maybeSingle()
-        ).data
-      : null;
+        return {
+          user: demoData.user,
+          sessions,
+          activeSessionId,
+          selectedTurn,
+          activeSessionTurns,
+          activeSourcesData,
+          hasDataError: false,
+        };
+      })()
+    : await (async () => {
+        const supabase = await createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-  const activeSessionId =
-    startsFreshThread
-      ? null
-      : selectedTurn?.session_id ??
-        (session && session.trim().length > 0 ? session : sessions[0]?.id ?? null);
+        const { data: sessionsData, error: sessionsError } = await supabase
+          .from("chat_sessions")
+          .select("id, title, updated_at")
+          .order("updated_at", { ascending: false })
+          .limit(10);
 
-  const { data: activeSessionTurnsData, error: sessionTurnsError } = activeSessionId
-    ? await supabase
-        .from("chat_turns")
-        .select("id, session_id, question, answer, status, error_message, created_at")
-        .eq("session_id", activeSessionId)
-        .order("created_at", { ascending: true })
-    : { data: [], error: null };
+        const sessions = sessionsData ?? [];
 
-  const activeSessionTurns = activeSessionTurnsData ?? [];
+        let selectedTurn =
+          !startsFreshThread && turn && turn.trim().length > 0
+            ? (
+                await supabase
+                  .from("chat_turns")
+                  .select("id, session_id, question, answer, status, error_message, created_at")
+                  .eq("id", turn)
+                  .maybeSingle()
+              ).data
+            : null;
 
-  if (!selectedTurn && activeSessionTurns.length > 0) {
-    selectedTurn = activeSessionTurns[activeSessionTurns.length - 1];
-  }
+        const activeSessionId =
+          startsFreshThread
+            ? null
+            : selectedTurn?.session_id ??
+              (session && session.trim().length > 0 ? session : sessions[0]?.id ?? null);
 
-  const activeTurnIds = activeSessionTurns.map((sessionTurn) => sessionTurn.id);
-  const { data: activeSourcesData, error: activeSourcesError } = activeTurnIds.length > 0
-    ? await supabase
-        .from("chat_turn_sources")
-        .select(
-          "id, turn_id, source_label, document_id, chunk_id, document_title, chunk_index, rank, content_excerpt, created_at",
-        )
-        .in("turn_id", activeTurnIds)
-        .order("created_at", { ascending: true })
-    : { data: [], error: null };
+        const { data: activeSessionTurnsData, error: sessionTurnsError } = activeSessionId
+          ? await supabase
+              .from("chat_turns")
+              .select("id, session_id, question, answer, status, error_message, created_at")
+              .eq("session_id", activeSessionId)
+              .order("created_at", { ascending: true })
+          : { data: [], error: null };
+
+        const activeSessionTurns = activeSessionTurnsData ?? [];
+
+        if (!selectedTurn && activeSessionTurns.length > 0) {
+          selectedTurn = activeSessionTurns[activeSessionTurns.length - 1];
+        }
+
+        const activeTurnIds = activeSessionTurns.map((sessionTurn) => sessionTurn.id);
+        const { data: activeSourcesData, error: activeSourcesError } = activeTurnIds.length > 0
+          ? await supabase
+              .from("chat_turn_sources")
+              .select(
+                "id, turn_id, source_label, document_id, chunk_id, document_title, chunk_index, rank, content_excerpt, created_at",
+              )
+              .in("turn_id", activeTurnIds)
+              .order("created_at", { ascending: true })
+          : { data: [], error: null };
+
+        return {
+          user,
+          sessions,
+          activeSessionId,
+          selectedTurn,
+          activeSessionTurns,
+          activeSourcesData: activeSourcesData ?? [],
+          hasDataError: Boolean(sessionTurnsError || activeSourcesError || sessionsError),
+        };
+      })();
+
+  const { user, sessions, activeSessionId, activeSessionTurns, activeSourcesData, hasDataError } =
+    loadedChatState;
+  const selectedTurn = loadedChatState.selectedTurn;
 
   const sourcesByTurnId = new Map<string, NonNullable<typeof activeSourcesData>>();
   for (const source of activeSourcesData ?? []) {
     sourcesByTurnId.set(source.turn_id, [...(sourcesByTurnId.get(source.turn_id) ?? []), source]);
   }
   const activeSession = sessions.find((entry) => entry.id === activeSessionId) ?? null;
-  const hasDataError = sessionTurnsError || activeSourcesError || sessionsError;
 
   return (
     <div className="space-y-6">
-      <section className="surface-enter rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.26)] sm:p-7">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
-              Study chat
-            </span>
-            <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
-              Ask your notes anything.
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-              Get answers based on your uploaded materials, then open the exact source sections when you want to review.
-            </p>
-          </div>
-        </div>
-      </section>
+      <PageHeader
+        badge="Study chat"
+        title="Ask your notes anything."
+        description="Get answers based on your uploaded materials, then open the exact source sections when you want to review."
+      />
+      {demoMode ? (
+        <AlertBanner tone="info">
+          Demo mode keeps a seeded study conversation available locally. The composer stays visible, but live question generation is disabled.
+        </AlertBanner>
+      ) : null}
 
       {pageError ? <AlertBanner tone="error">{pageError}</AlertBanner> : null}
       {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
@@ -163,7 +251,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <main className="surface-enter min-h-[42rem] overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950/45 shadow-[0_24px_80px_rgba(2,6,23,0.2)]">
+        <main className="surface-enter min-h-[38rem] overflow-hidden rounded-[1.9rem] border border-white/8 bg-slate-950/38 shadow-[0_18px_46px_rgba(2,6,23,0.14)]">
           <div className="border-b border-white/10 px-5 py-4 sm:px-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -176,7 +264,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
                     : "Ask a question to start a saved conversation."}
                 </p>
               </div>
-              {activeSessionId ? (
+              {activeSessionId && !demoMode ? (
                 <DeleteChatSessionForm
                   action={deleteChatSession}
                   sessionId={activeSessionId}
@@ -194,7 +282,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
           <div className="px-4 py-6 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-4xl space-y-7">
               {activeSessionTurns.length === 0 ? (
-                <div className="py-12 text-center">
+                <div className="py-10 text-center">
                   <p className="text-sm font-semibold text-white">Start a study conversation.</p>
                   <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-400">
                     Attach a PDF with the plus button or ask about materials already in your library.
@@ -297,16 +385,18 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
                             )}
                           </details>
 
-                          <DeleteChatTurnForm
-                            action={deleteChatTurn}
-                            turnId={sessionTurn.id}
-                            returnSessionId={activeSessionId ?? undefined}
-                            returnTurnId={selectedTurn?.id}
-                            confirmMessage="Delete this question and answer? This cannot be undone."
-                            label="Delete answer"
-                            pendingLabel="Deleting..."
-                            className="border border-rose-400/20 bg-rose-400/10 px-3 py-1.5 text-xs text-rose-100 hover:bg-rose-400/20"
-                          />
+                          {!demoMode ? (
+                            <DeleteChatTurnForm
+                              action={deleteChatTurn}
+                              turnId={sessionTurn.id}
+                              returnSessionId={activeSessionId ?? undefined}
+                              returnTurnId={selectedTurn?.id}
+                              confirmMessage="Delete this question and answer? This cannot be undone."
+                              label="Delete answer"
+                              pendingLabel="Deleting..."
+                              className="border border-rose-400/20 bg-rose-400/10 px-3 py-1.5 text-xs text-rose-100 hover:bg-rose-400/20"
+                            />
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -317,40 +407,76 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
           </div>
 
           <div className="border-t border-white/10 bg-slate-950/70 p-4 sm:p-5">
-            <form action={submitGroundedQuestion} className="mx-auto flex max-w-4xl flex-col gap-3">
-              {activeSessionId ? <input type="hidden" name="sessionId" value={activeSessionId} /> : null}
-              <label className="sr-only" htmlFor="chat-question">
-                Ask a question
-              </label>
-              <div className="flex flex-col gap-3 rounded-[1.6rem] border border-white/10 bg-white/[0.06] p-2 focus-within:border-cyan-300/40 sm:flex-row sm:items-center">
-                {user ? <ChatAttachmentUpload userId={user.id} bucket={uploadBucket} /> : null}
-                <input
-                  id="chat-question"
-                  name="question"
-                  defaultValue={draftQuestion}
-                  type="text"
-                  placeholder="Ask about a formula, concept, reading, or example..."
-                  className="min-h-12 flex-1 rounded-full bg-transparent px-4 text-sm text-white outline-none placeholder:text-slate-500"
-                />
-                <AskQuestionButton />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {suggestedPrompts.map((prompt) => (
-                  <a
-                    key={prompt}
-                    href={`/chat?q=${encodeURIComponent(prompt)}`}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-400 transition-colors hover:border-cyan-300/25 hover:text-cyan-100"
+            {demoMode ? (
+              <div className="mx-auto flex max-w-4xl flex-col gap-3">
+                <div className="flex flex-col gap-3 rounded-[1.6rem] border border-white/10 bg-white/[0.06] p-2 sm:flex-row sm:items-center">
+                  <button
+                    type="button"
+                    disabled
+                    aria-label="Attach a PDF in demo mode"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.07] text-xl leading-none text-slate-500"
                   >
-                    {prompt}
-                  </a>
-                ))}
+                    +
+                  </button>
+                  <input
+                    type="text"
+                    disabled
+                    defaultValue={draftQuestion}
+                    placeholder="Demo mode keeps the composer visible without requiring live generation..."
+                    className="min-h-12 flex-1 rounded-full bg-transparent px-4 text-sm text-slate-400 outline-none placeholder:text-slate-500"
+                  />
+                  <Button type="button" disabled aria-disabled className="opacity-70">
+                    Ask StudyStack
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {suggestedPrompts.map((prompt, index) => (
+                    <a
+                      key={prompt}
+                      href={`/chat?session=${sessions[index % Math.max(sessions.length, 1)]?.id ?? ""}`}
+                      className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-400 transition-colors hover:border-cyan-300/25 hover:text-cyan-100"
+                    >
+                      {prompt}
+                    </a>
+                  ))}
+                </div>
               </div>
-            </form>
+            ) : (
+              <form action={submitGroundedQuestion} className="mx-auto flex max-w-4xl flex-col gap-3">
+                {activeSessionId ? <input type="hidden" name="sessionId" value={activeSessionId} /> : null}
+                <label className="sr-only" htmlFor="chat-question">
+                  Ask a question
+                </label>
+                <div className="flex flex-col gap-3 rounded-[1.6rem] border border-white/10 bg-white/[0.06] p-2 focus-within:border-cyan-300/40 sm:flex-row sm:items-center">
+                  {user ? <ChatAttachmentUpload userId={user.id} bucket={uploadBucket} /> : null}
+                  <input
+                    id="chat-question"
+                    name="question"
+                    defaultValue={draftQuestion}
+                    type="text"
+                    placeholder="Ask about a formula, concept, reading, or example..."
+                    className="min-h-12 flex-1 rounded-full bg-transparent px-4 text-sm text-white outline-none placeholder:text-slate-500"
+                  />
+                  <AskQuestionButton />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {suggestedPrompts.map((prompt) => (
+                    <a
+                      key={prompt}
+                      href={`/chat?q=${encodeURIComponent(prompt)}`}
+                      className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-400 transition-colors hover:border-cyan-300/25 hover:text-cyan-100"
+                    >
+                      {prompt}
+                    </a>
+                  ))}
+                </div>
+              </form>
+            )}
           </div>
         </main>
 
         <aside className="surface-enter space-y-4">
-          <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.04] p-4">
+          <div className="rounded-[1.6rem] border border-white/8 bg-white/[0.03] p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-white">Conversations</p>
@@ -388,7 +514,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
             </div>
           </div>
 
-          <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.04] p-4">
+          <div className="rounded-[1.6rem] border border-white/8 bg-white/[0.03] p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-white">Current thread</p>

@@ -2,14 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { AlertBanner } from "@/components/ui/alert-banner";
+import { uploadPdfFromBrowser } from "@/lib/documents/browser-upload";
 import {
   isAllowedPdfMetadata,
   MAX_PDF_UPLOAD_BYTES,
   PDF_MIME_TYPE,
-  sanitizeUploadFileName,
 } from "@/lib/documents/upload-validation";
 
 function buildUploadResultUrl(pathname: string, params: Record<string, string>) {
@@ -58,79 +57,42 @@ export function UploadDocumentForm({
       setErrorMessage(null);
       setStatusMessage("Uploading your PDF...");
 
-      const supabase = createClient();
-      const safeFileName = sanitizeUploadFileName(fileEntry.name);
-      const filePath = `${userId}/${crypto.randomUUID()}-${safeFileName}`;
-      const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, fileEntry, {
-        contentType: PDF_MIME_TYPE,
-        upsert: false,
+      setStatusMessage("Preparing your document...");
+      const result = await uploadPdfFromBrowser({
+        userId,
+        bucket,
+        file: fileEntry,
+        title,
       });
 
-      if (uploadError) {
+      if (!result.ok) {
         setStatusMessage(null);
-        setErrorMessage(
-          uploadError.message.includes("maximum allowed size")
-            ? "This PDF is larger than the current upload limit."
-            : "The PDF could not be uploaded. Please try again.",
-        );
-        return;
-      }
-
-      setStatusMessage("Preparing your document...");
-
-      try {
-        const response = await fetch("/api/documents/upload", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            title,
-            fileName: fileEntry.name,
-            filePath,
-            fileSize: fileEntry.size,
-            mimeType: fileEntry.type || "application/pdf",
-          }),
-        });
-
-        const result = (await response.json()) as {
-          ok?: boolean;
-          error?: string;
-          message?: string;
-        };
-
-        if (!response.ok || result.ok === false) {
-          setStatusMessage(null);
-          setErrorMessage(result.error ?? "The uploaded PDF could not be prepared.");
-          router.push(
-            buildUploadResultUrl(redirectPath, {
-              error: result.error ?? "The uploaded PDF could not be prepared.",
-            }),
-          );
-          router.refresh();
-          return;
-        }
-
-        if (titleInputRef.current) {
-          titleInputRef.current.value = "";
-        }
-
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
-
-        setStatusMessage(null);
-        setErrorMessage(null);
+        setErrorMessage(result.error);
         router.push(
           buildUploadResultUrl(redirectPath, {
-            message: result.message ?? "PDF uploaded successfully.",
+            error: result.error,
           }),
         );
         router.refresh();
-      } catch {
-        setStatusMessage(null);
-        setErrorMessage("The upload could not be completed. Please try again.");
+        return;
       }
+
+      if (titleInputRef.current) {
+        titleInputRef.current.value = "";
+      }
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      setStatusMessage(null);
+      setErrorMessage(null);
+      router.push(
+        buildUploadResultUrl(redirectPath, {
+          message: result.message,
+        }),
+      );
+      router.refresh();
     });
   };
 

@@ -9,18 +9,25 @@ type SignOutButtonProps = {
   variant?: "primary" | "secondary" | "ghost";
   size?: "md" | "lg";
   className?: string;
+  isDemoMode?: boolean;
 };
 
 export function SignOutButton({
   variant = "secondary",
   size = "md",
   className,
+  isDemoMode = false,
 }: SignOutButtonProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   function handleSignOut() {
     startTransition(async () => {
+      if (isDemoMode) {
+        router.replace("/demo/exit");
+        return;
+      }
+
       const supabase = createClient();
 
       await supabase.auth.signOut();
@@ -38,7 +45,7 @@ export function SignOutButton({
       onClick={handleSignOut}
       disabled={isPending}
     >
-      {isPending ? "Signing out..." : "Sign out"}
+      {isPending ? "Signing out..." : isDemoMode ? "Exit preview" : "Sign out"}
     </Button>
   );
 }

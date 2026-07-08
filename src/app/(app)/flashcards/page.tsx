@@ -3,12 +3,15 @@ import {
   deleteFlashcardSet,
   generateFlashcardSet,
 } from "@/app/(app)/flashcards/actions";
+import { PageHeader } from "@/components/app/page-header";
 import { ManualFlashcardForm } from "@/components/flashcards/manual-flashcard-form";
 import { ActionSubmitButton, ConfirmActionSubmitButton } from "@/components/study-tools/action-submit-button";
 import { Button } from "@/components/ui/button";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { getDemoWorkspaceData } from "@/lib/demo/data";
+import { isDemoSession } from "@/lib/demo/mode";
 import { formatDocumentDate } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,21 +33,47 @@ function getSetModeDescription(sourceMode: string) {
 }
 
 export default async function FlashcardsPage({ searchParams }: FlashcardsPageProps) {
-  const [{ error: pageError, message }, supabase] = await Promise.all([
-    searchParams,
-    createClient(),
-  ]);
+  const [{ error: pageError, message }] = await Promise.all([searchParams]);
+  const demoMode = await isDemoSession();
 
-  const [{ data: documents }, { data: sets }] = await Promise.all([
-    supabase
-      .from("documents")
-      .select("id, title, document_contents(chunk_count, extraction_status)")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("flashcard_sets")
-      .select("id, title, source_mode, created_at, updated_at, flashcards(id)")
-      .order("updated_at", { ascending: false }),
-  ]);
+  const [documents, sets] = demoMode
+    ? (() => {
+        const demoData = getDemoWorkspaceData();
+
+        return [
+          demoData.documents.map((document) => ({
+            id: document.id,
+            title: document.title,
+            document_contents: {
+              chunk_count: document.chunk_count,
+              extraction_status: document.extraction_status,
+            },
+          })),
+          demoData.flashcardSets.map((set) => ({
+            id: set.id,
+            title: set.title,
+            source_mode: set.source_mode,
+            created_at: set.created_at,
+            updated_at: set.updated_at,
+            flashcards: set.cards.map((card) => ({ id: card.id })),
+          })),
+        ] as const;
+      })()
+    : await (async () => {
+        const supabase = await createClient();
+        const [{ data: documents }, { data: sets }] = await Promise.all([
+          supabase
+            .from("documents")
+            .select("id, title, document_contents(chunk_count, extraction_status)")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("flashcard_sets")
+            .select("id, title, source_mode, created_at, updated_at, flashcards(id)")
+            .order("updated_at", { ascending: false }),
+        ]);
+
+        return [documents ?? [], sets ?? []] as const;
+      })();
 
   const normalizedDocuments = (documents ?? []).map((document) => ({
     ...document,
@@ -55,32 +84,29 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
 
   return (
     <div className="space-y-6">
-      <section className="surface-enter rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.22)] sm:p-7">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
-              Flashcards
-            </span>
-            <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
-              Build cards from your notes.
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-              Turn focused topics into saved study sets with source links, flip cards, and spacious review sessions.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
+      <PageHeader
+        badge="Flashcards"
+        title="Build cards from your notes."
+        description="Turn focused topics into saved study sets with source links, flip cards, and calmer review sessions."
+        actions={
+          <>
             <Button href="/quizzes" variant="secondary">
               View quizzes
             </Button>
             <Button href="/documents">Browse documents</Button>
-          </div>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       {pageError ? <AlertBanner tone="error">{pageError}</AlertBanner> : null}
       {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
+      {demoMode ? (
+        <AlertBanner tone="info">
+          Demo mode includes both generated and manual flashcard sets so the study session UI can be shown without live generation.
+        </AlertBanner>
+      ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[0.82fr_1.18fr]">
+      <div className="grid gap-5 xl:grid-cols-[0.84fr_1.16fr]">
         <div className="space-y-5">
         <Card className="surface-enter space-y-5">
           <div>
@@ -90,6 +116,11 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
             </CardDescription>
           </div>
 
+          {demoMode ? (
+            <AlertBanner tone="info">
+              Flashcard generation is disabled in demo mode. Open the seeded sets on the right to show the full study experience.
+            </AlertBanner>
+          ) : (
           <form action={generateFlashcardSet} className="space-y-4">
             <label className="block space-y-2">
               <span className="text-sm font-medium text-slate-200">Set title</span>
@@ -151,6 +182,7 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
               <ActionSubmitButton label="Generate flashcards" pendingLabel="Generating..." />
             </div>
           </form>
+          )}
         </Card>
 
         <Card className="surface-enter space-y-5">
@@ -160,7 +192,13 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
               Build a custom set by writing the fronts and backs yourself.
             </CardDescription>
           </div>
-          <ManualFlashcardForm action={createManualFlashcardSet} />
+          {demoMode ? (
+            <AlertBanner tone="info">
+              Manual set creation is hidden in demo mode so the workspace can stay local and self-contained.
+            </AlertBanner>
+          ) : (
+            <ManualFlashcardForm action={createManualFlashcardSet} />
+          )}
         </Card>
         </div>
 
@@ -216,21 +254,23 @@ export default async function FlashcardsPage({ searchParams }: FlashcardsPagePro
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
                     <Button href={`/flashcards/${flashcardSet.id}`}>Open</Button>
-                    {flashcardSet.source_mode === "manual" ? (
+                    {!demoMode && flashcardSet.source_mode === "manual" ? (
                       <Button href={`/flashcards/${flashcardSet.id}`} variant="secondary">
                         Edit
                       </Button>
                     ) : null}
-                    <form action={deleteFlashcardSet}>
-                      <input type="hidden" name="setId" value={flashcardSet.id} />
-                      <ConfirmActionSubmitButton
-                        label="Delete"
-                        pendingLabel="Deleting..."
-                        confirmMessage={`Delete "${flashcardSet.title}"? This cannot be undone.`}
-                        variant="ghost"
-                        className="border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
-                      />
-                    </form>
+                    {!demoMode ? (
+                      <form action={deleteFlashcardSet}>
+                        <input type="hidden" name="setId" value={flashcardSet.id} />
+                        <ConfirmActionSubmitButton
+                          label="Delete"
+                          pendingLabel="Deleting..."
+                          confirmMessage={`Delete "${flashcardSet.title}"? This cannot be undone.`}
+                          variant="ghost"
+                          className="border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
+                        />
+                      </form>
+                    ) : null}
                   </div>
                 </div>
               ))}

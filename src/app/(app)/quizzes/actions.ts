@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isDemoSession } from "@/lib/demo/mode";
 import {
   buildPartialGenerationMessage,
   buildStudyToolRedirect,
@@ -9,8 +10,11 @@ import {
   parseRequestedStudyItemCount,
   requireStudyToolUser,
 } from "@/lib/study-tools/action-helpers";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { logServerEvent } from "@/lib/server/logger";
 import { generateQuizFromChunks } from "@/lib/study-tools/generate";
 import { retrieveStudyChunks } from "@/lib/study-tools/retrieval";
+import { validateOptionalTopic, validateStudySetTitle } from "@/lib/validation";
 
 type RetrievedSource = Awaited<ReturnType<typeof retrieveStudyChunks>>;
 type GeneratedQuestions = Awaited<ReturnType<typeof generateQuizFromChunks>>;
@@ -65,7 +69,23 @@ async function generateAndStoreQuiz({
 }) {
   const { supabase, user } = await requireStudyToolUser();
   let source: RetrievedSource;
-  const retrievalQuery = queryText.trim() || title.trim();
+  const normalizedTitle = validateStudySetTitle(title, "quiz");
+  const safeTitle = normalizedTitle.ok ? normalizedTitle.value : title.trim().slice(0, 140);
+  const retrievalQuery = validateOptionalTopic(queryText) || safeTitle;
+  const generationRateLimit = checkRateLimit({
+    action: replaceExisting ? "quizzes-regenerate" : "quizzes-generate",
+    identifier: user.id,
+    limit: 6,
+    windowMs: 10 * 60 * 1000,
+  });
+
+  if (!generationRateLimit.ok) {
+    redirect(
+      buildStudyToolRedirect("quizzes", {
+        error: `Too many quiz requests were made in a short time. Please wait about ${generationRateLimit.retryAfterSeconds} seconds and try again.`,
+      }),
+    );
+  }
 
   try {
     source = await retrieveStudyChunks({
@@ -74,7 +94,12 @@ async function generateAndStoreQuiz({
       documentId,
       matchCount: 8,
     });
-  } catch {
+  } catch (error) {
+    logServerEvent("warn", "quizzes.retrieve_failed", {
+      userId: user.id,
+      documentId: documentId || "all",
+      error: error instanceof Error ? error.message : "unknown_error",
+    });
     redirect(
       buildStudyToolRedirect("quizzes", {
         error: "StudyStack could not find enough useful material for a quiz.",
@@ -95,11 +120,16 @@ async function generateAndStoreQuiz({
   try {
     questions = await generateQuizFromChunks({
       chunks: source.chunks,
-      titleHint: title || source.titleHint,
+      titleHint: safeTitle || source.titleHint,
       studyTopic: retrievalQuery,
       questionCount: requestedCount,
     });
-  } catch {
+  } catch (error) {
+    logServerEvent("error", "quizzes.generate_failed", {
+      userId: user.id,
+      documentId: documentId || "all",
+      error: error instanceof Error ? error.message : "unknown_error",
+    });
     redirect(
       buildStudyToolRedirect("quizzes", {
         error: "The quiz could not be generated right now.",
@@ -122,7 +152,7 @@ async function generateAndStoreQuiz({
         .from("quiz_sets")
         .insert({
           user_id: user.id,
-          title: title || source.titleHint,
+          title: safeTitle || source.titleHint,
           source_mode: source.sourceMode,
           query_text: source.sourceMode === "retrieval" ? retrievalQuery : null,
           document_id: source.documentId,
@@ -144,7 +174,7 @@ async function generateAndStoreQuiz({
     await supabase
       .from("quiz_sets")
       .update({
-        title: title || source.titleHint,
+        title: safeTitle || source.titleHint,
         source_mode: source.sourceMode,
         query_text: source.sourceMode === "retrieval" ? retrievalQuery : null,
         document_id: source.documentId,
@@ -193,23 +223,33 @@ async function generateAndStoreQuiz({
 }
 
 export async function generateQuizSet(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildStudyToolRedirect("quizzes", { message: "Demo quiz sets are seeded locally and generation is disabled." }));
+  }
+
   await generateAndStoreQuiz({
-    title: String(formData.get("title") ?? "").trim(),
-    queryText: String(formData.get("topic") ?? "").trim(),
+    title: String(formData.get("title") ?? ""),
+    queryText: String(formData.get("topic") ?? ""),
     documentId: String(formData.get("documentId") ?? "").trim(),
     requestedCount: parseRequestedStudyItemCount("quizzes", formData.get("count")),
   });
 }
 
 export async function createManualQuizSet(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildStudyToolRedirect("quizzes", { message: "Manual quiz creation is disabled in demo mode." }));
+  }
+
   const { supabase, user } = await requireStudyToolUser();
-  const title = String(formData.get("title") ?? "").trim();
+  const titleValidation = validateStudySetTitle(String(formData.get("title") ?? ""), "quiz");
   const questions = parseManualQuestions(formData);
 
-  if (!title || questions.length === 0) {
+  if (!titleValidation.ok || questions.length === 0) {
     redirect(
       buildStudyToolRedirect("quizzes", {
-        error: "Add a title and at least one complete multiple-choice question.",
+        error: titleValidation.ok
+          ? "Add at least one complete multiple-choice question."
+          : titleValidation.error,
       }),
     );
   }
@@ -218,7 +258,7 @@ export async function createManualQuizSet(formData: FormData) {
     .from("quiz_sets")
     .insert({
       user_id: user.id,
-      title,
+      title: titleValidation.value,
       source_mode: "manual",
       query_text: null,
       document_id: null,
@@ -266,17 +306,21 @@ export async function createManualQuizSet(formData: FormData) {
 }
 
 export async function updateManualQuizSet(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildStudyToolRedirect("quizzes", { message: "Manual quiz editing is disabled in demo mode." }));
+  }
+
   const { supabase, user } = await requireStudyToolUser();
   const setId = String(formData.get("setId") ?? "").trim();
-  const title = String(formData.get("title") ?? "").trim();
+  const titleValidation = validateStudySetTitle(String(formData.get("title") ?? ""), "quiz");
   const questions = parseManualQuestions(formData);
 
   if (!setId) {
     redirect(buildStudyToolRedirect("quizzes", { error: "A quiz set id is required." }));
   }
 
-  if (!title || questions.length === 0) {
-    redirect(`/quizzes/${setId}?${new URLSearchParams({ error: "Add a title and at least one complete multiple-choice question." }).toString()}`);
+  if (!titleValidation.ok || questions.length === 0) {
+    redirect(`/quizzes/${setId}?${new URLSearchParams({ error: titleValidation.ok ? "Add at least one complete multiple-choice question." : titleValidation.error }).toString()}`);
   }
 
   const { data: set, error: setError } = await supabase
@@ -299,7 +343,7 @@ export async function updateManualQuizSet(formData: FormData) {
   const { error: updateSetError } = await supabase
     .from("quiz_sets")
     .update({
-      title,
+      title: titleValidation.value,
       updated_at: new Date().toISOString(),
     })
     .eq("id", setId)
@@ -334,6 +378,10 @@ export async function updateManualQuizSet(formData: FormData) {
 }
 
 export async function regenerateQuizSet(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildStudyToolRedirect("quizzes", { message: "Quiz regeneration is disabled in demo mode." }));
+  }
+
   const { supabase, user } = await requireStudyToolUser();
   const setId = String(formData.get("setId") ?? "").trim();
 
@@ -380,6 +428,10 @@ export async function regenerateQuizSet(formData: FormData) {
 }
 
 export async function deleteQuizSet(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildStudyToolRedirect("quizzes", { message: "Quiz deletion is disabled in demo mode." }));
+  }
+
   const { supabase, user } = await requireStudyToolUser();
   const setId = String(formData.get("setId") ?? "").trim();
 

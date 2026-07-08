@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { getDemoWorkspaceData } from "@/lib/demo/data";
+import { isDemoSession } from "@/lib/demo/mode";
 import { buildDocumentFileUrl, formatDocumentDate, formatFileSize } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
@@ -26,21 +28,43 @@ type DocumentsPageProps = {
 };
 
 export default async function DocumentsPage({ searchParams }: DocumentsPageProps) {
-  const [{ error: pageError, message, status, sort }, supabase] = await Promise.all([
-    searchParams,
-    createClient(),
-  ]);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const [{ error: pageError, message, status, sort }] = await Promise.all([searchParams]);
+  const demoMode = await isDemoSession();
   const uploadBucket = process.env.SUPABASE_DOCUMENTS_BUCKET || "documents";
+  const { user, documents, error } = demoMode
+    ? {
+        user: getDemoWorkspaceData().user,
+        documents: getDemoWorkspaceData().documents.map((document) => ({
+          id: document.id,
+          title: document.title,
+          file_name: document.file_name,
+          file_path: document.file_path,
+          file_size: document.file_size,
+          mime_type: document.mime_type,
+          created_at: document.created_at,
+          document_contents: {
+            extraction_status: document.extraction_status,
+            page_count: document.page_count,
+            chunk_count: document.chunk_count,
+            error_message: document.error_message,
+          },
+        })),
+        error: null,
+      }
+    : await (async () => {
+        const supabase = await createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const { data: documents, error } = await supabase
+          .from("documents")
+          .select(
+            "id, title, file_name, file_path, file_size, mime_type, created_at, document_contents(extraction_status, page_count, chunk_count, error_message)",
+          )
+          .order("created_at", { ascending: false });
 
-  const { data: documents, error } = await supabase
-    .from("documents")
-    .select(
-      "id, title, file_name, file_path, file_size, mime_type, created_at, document_contents(extraction_status, page_count, chunk_count, error_message)",
-    )
-    .order("created_at", { ascending: false });
+        return { user, documents, error };
+      })();
 
   const documentCount = documents?.length ?? 0;
   const normalizedDocuments = (documents ?? []).map((document) => ({
@@ -96,6 +120,11 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
           </>
         }
       />
+      {demoMode ? (
+        <AlertBanner tone="info">
+          Demo mode keeps the document library readable with seeded source files. Uploading, renaming, and refresh actions are shown in a presentation-safe state.
+        </AlertBanner>
+      ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
         <div className="space-y-5 xl:order-2">
@@ -111,26 +140,30 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
 
             {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
 
-            {user ? <UploadDocumentForm userId={user.id} bucket={uploadBucket} /> : null}
+            {demoMode ? (
+              <AlertBanner tone="info">
+                PDF upload is disabled in demo mode so the local showcase can run without storage or database connectivity.
+              </AlertBanner>
+            ) : user ? <UploadDocumentForm userId={user.id} bucket={uploadBucket} /> : null}
           </Card>
 
           <Card className="space-y-4">
             <CardTitle>Library status</CardTitle>
-            <div className="grid gap-3">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                 <p className="text-sm text-slate-400">Total PDFs</p>
                 <p className="mt-1 text-2xl font-semibold text-white">{documentCount}</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                   <p className="text-sm text-slate-400">Ready</p>
                   <p className="mt-1 text-xl font-semibold text-white">{completedCount}</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                   <p className="text-sm text-slate-400">Getting ready</p>
                   <p className="mt-1 text-xl font-semibold text-white">{pendingCount}</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                   <p className="text-sm text-slate-400">Needs review</p>
                   <p className="mt-1 text-xl font-semibold text-white">{failedCount}</p>
                 </div>
@@ -237,7 +270,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                 {sortedDocuments.map((document) => (
                 <div
                   key={document.id}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-5"
+                  className="rounded-2xl border border-white/10 bg-white/[0.04] p-5"
                 >
                   <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
                     <div className="space-y-4">
@@ -247,13 +280,19 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                           {getDocumentStatusLabel(document.content?.extraction_status)}
                         </span>
                       </div>
-                      <DocumentTitleForm
-                        action={renameDocumentFromList}
-                        documentId={document.id}
-                        initialTitle={document.title}
-                        redirectTo="/documents"
-                        compact
-                      />
+                      {demoMode ? (
+                        <div className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3 text-sm font-medium text-white">
+                          {document.title}
+                        </div>
+                      ) : (
+                        <DocumentTitleForm
+                          action={renameDocumentFromList}
+                          documentId={document.id}
+                          initialTitle={document.title}
+                          redirectTo="/documents"
+                          compact
+                        />
+                      )}
                       <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-400">
                         <span>{document.file_name}</span>
                         <span>{document.mime_type === "application/pdf" ? "PDF" : document.mime_type}</span>
@@ -286,39 +325,47 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                         <Button href={`/documents/${document.id}`} variant="secondary" className="justify-center">
                           View details
                         </Button>
-                        <Button
-                          href={buildDocumentFileUrl(document.id, "view")}
-                          variant="ghost"
-                          external
-                          target="_blank"
-                          rel="noreferrer"
-                          className="justify-center border border-white/10 bg-white/[0.06] text-white hover:border-cyan-300/40 hover:bg-white/10"
-                        >
-                          View PDF
-                        </Button>
-                        <Button
-                          href={buildDocumentFileUrl(document.id, "download")}
-                          variant="ghost"
-                          external
-                          className="justify-center border border-white/10 bg-white/[0.06] text-white hover:border-cyan-300/40 hover:bg-white/10"
-                        >
-                          Download PDF
-                        </Button>
-                        <ReprocessDocumentForm
-                          action={reprocessDocumentFromList}
-                          documentId={document.id}
-                          label="Refresh document"
-                          pendingLabel="Refreshing..."
-                          className="justify-center border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20"
-                        />
-                        <DeleteDocumentForm
-                          action={deleteDocumentFromList}
-                          documentId={document.id}
-                          confirmMessage={`Delete "${document.title}" and its saved study data? This cannot be undone.`}
-                          label="Delete document"
-                          pendingLabel="Deleting..."
-                          className="justify-center border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
-                        />
+                        {!demoMode ? (
+                          <>
+                            <Button
+                              href={buildDocumentFileUrl(document.id, "view")}
+                              variant="ghost"
+                              external
+                              target="_blank"
+                              rel="noreferrer"
+                              className="justify-center border border-white/10 bg-white/[0.06] text-white hover:border-cyan-300/40 hover:bg-white/10"
+                            >
+                              View PDF
+                            </Button>
+                            <Button
+                              href={buildDocumentFileUrl(document.id, "download")}
+                              variant="ghost"
+                              external
+                              className="justify-center border border-white/10 bg-white/[0.06] text-white hover:border-cyan-300/40 hover:bg-white/10"
+                            >
+                              Download PDF
+                            </Button>
+                            <ReprocessDocumentForm
+                              action={reprocessDocumentFromList}
+                              documentId={document.id}
+                              label="Refresh document"
+                              pendingLabel="Refreshing..."
+                              className="justify-center border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20"
+                            />
+                            <DeleteDocumentForm
+                              action={deleteDocumentFromList}
+                              documentId={document.id}
+                              confirmMessage={`Delete "${document.title}" and its saved study data? This cannot be undone.`}
+                              label="Delete document"
+                              pendingLabel="Deleting..."
+                              className="justify-center border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
+                            />
+                          </>
+                        ) : (
+                          <p className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm text-slate-400">
+                            Demo mode keeps file actions read-only.
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

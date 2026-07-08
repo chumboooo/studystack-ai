@@ -4,7 +4,9 @@ import { signUp } from "@/app/(auth)/actions";
 import { AuthMessage } from "@/components/auth/auth-message";
 import { AuthSubmitButton } from "@/components/auth/auth-submit-button";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { isDemoModeEnabled, isDemoSession } from "@/lib/demo/mode";
 import { createClient } from "@/lib/supabase/server";
 
 type SignUpPageProps = {
@@ -14,10 +16,21 @@ type SignUpPageProps = {
 };
 
 export default async function SignUpPage({ searchParams }: SignUpPageProps) {
-  const [{ error }, supabase] = await Promise.all([searchParams, createClient()]);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const demoAvailable = isDemoModeEnabled();
+  const [{ error }, demoSessionActive] = await Promise.all([searchParams, isDemoSession()]);
+
+  if (demoSessionActive) {
+    redirect("/dashboard");
+  }
+
+  let user = null;
+
+  try {
+    const supabase = await createClient();
+    user = (await supabase.auth.getUser()).data.user;
+  } catch {
+    user = null;
+  }
 
   if (user) {
     redirect("/dashboard");
@@ -75,6 +88,18 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
 
           <AuthSubmitButton idleLabel="Create account" pendingLabel="Creating account..." />
         </form>
+
+        {demoAvailable ? (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <p className="text-sm font-medium text-white">Prefer a quick preview?</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Enter the seeded demo workspace to review the product before signing up.
+            </p>
+            <Button href="/demo" variant="secondary" className="mt-4 w-full justify-center">
+              Explore demo
+            </Button>
+          </div>
+        ) : null}
       </Card>
     </AuthShell>
   );

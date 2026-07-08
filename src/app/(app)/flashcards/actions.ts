@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isDemoSession } from "@/lib/demo/mode";
 import {
   buildPartialGenerationMessage,
   buildStudyToolRedirect,
@@ -9,8 +10,11 @@ import {
   parseRequestedStudyItemCount,
   requireStudyToolUser,
 } from "@/lib/study-tools/action-helpers";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { logServerEvent } from "@/lib/server/logger";
 import { generateFlashcardsFromChunks } from "@/lib/study-tools/generate";
 import { retrieveStudyChunks } from "@/lib/study-tools/retrieval";
+import { validateOptionalTopic, validateStudySetTitle } from "@/lib/validation";
 
 type RetrievedSource = Awaited<ReturnType<typeof retrieveStudyChunks>>;
 type GeneratedCards = Awaited<ReturnType<typeof generateFlashcardsFromChunks>>;
@@ -48,7 +52,23 @@ async function generateAndStoreFlashcards({
 }) {
   const { supabase, user } = await requireStudyToolUser();
   let source: RetrievedSource;
-  const retrievalQuery = queryText.trim() || title.trim();
+  const normalizedTitle = validateStudySetTitle(title, "flashcards");
+  const safeTitle = normalizedTitle.ok ? normalizedTitle.value : title.trim().slice(0, 140);
+  const retrievalQuery = validateOptionalTopic(queryText) || safeTitle;
+  const generationRateLimit = checkRateLimit({
+    action: replaceExisting ? "flashcards-regenerate" : "flashcards-generate",
+    identifier: user.id,
+    limit: 6,
+    windowMs: 10 * 60 * 1000,
+  });
+
+  if (!generationRateLimit.ok) {
+    redirect(
+      buildStudyToolRedirect("flashcards", {
+        error: `Too many flashcard requests were made in a short time. Please wait about ${generationRateLimit.retryAfterSeconds} seconds and try again.`,
+      }),
+    );
+  }
 
   try {
     source = await retrieveStudyChunks({
@@ -57,7 +77,12 @@ async function generateAndStoreFlashcards({
       documentId,
       matchCount: 8,
     });
-  } catch {
+  } catch (error) {
+    logServerEvent("warn", "flashcards.retrieve_failed", {
+      userId: user.id,
+      documentId: documentId || "all",
+      error: error instanceof Error ? error.message : "unknown_error",
+    });
     redirect(
       buildStudyToolRedirect("flashcards", {
         error: "StudyStack could not find enough useful material for flashcards.",
@@ -78,11 +103,16 @@ async function generateAndStoreFlashcards({
   try {
     cards = await generateFlashcardsFromChunks({
       chunks: source.chunks,
-      titleHint: title || source.titleHint,
+      titleHint: safeTitle || source.titleHint,
       studyTopic: retrievalQuery,
       cardCount: requestedCount,
     });
-  } catch {
+  } catch (error) {
+    logServerEvent("error", "flashcards.generate_failed", {
+      userId: user.id,
+      documentId: documentId || "all",
+      error: error instanceof Error ? error.message : "unknown_error",
+    });
     redirect(
       buildStudyToolRedirect("flashcards", {
         error: "Flashcards could not be generated right now.",
@@ -105,7 +135,7 @@ async function generateAndStoreFlashcards({
         .from("flashcard_sets")
         .insert({
           user_id: user.id,
-          title: title || source.titleHint,
+          title: safeTitle || source.titleHint,
           source_mode: source.sourceMode,
           query_text: source.sourceMode === "retrieval" ? retrievalQuery : null,
           document_id: source.documentId,
@@ -127,7 +157,7 @@ async function generateAndStoreFlashcards({
     await supabase
       .from("flashcard_sets")
       .update({
-        title: title || source.titleHint,
+        title: safeTitle || source.titleHint,
         source_mode: source.sourceMode,
         query_text: source.sourceMode === "retrieval" ? retrievalQuery : null,
         document_id: source.documentId,
@@ -174,23 +204,31 @@ async function generateAndStoreFlashcards({
 }
 
 export async function generateFlashcardSet(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildStudyToolRedirect("flashcards", { message: "Demo flashcard sets are seeded locally and generation is disabled." }));
+  }
+
   await generateAndStoreFlashcards({
-    title: String(formData.get("title") ?? "").trim(),
-    queryText: String(formData.get("topic") ?? "").trim(),
+    title: String(formData.get("title") ?? ""),
+    queryText: String(formData.get("topic") ?? ""),
     documentId: String(formData.get("documentId") ?? "").trim(),
     requestedCount: parseRequestedStudyItemCount("flashcards", formData.get("count")),
   });
 }
 
 export async function createManualFlashcardSet(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildStudyToolRedirect("flashcards", { message: "Manual flashcard creation is disabled in demo mode." }));
+  }
+
   const { supabase, user } = await requireStudyToolUser();
-  const title = String(formData.get("title") ?? "").trim();
+  const titleValidation = validateStudySetTitle(String(formData.get("title") ?? ""), "flashcards");
   const cards = parseManualCards(formData);
 
-  if (!title || cards.length === 0) {
+  if (!titleValidation.ok || cards.length === 0) {
     redirect(
       buildStudyToolRedirect("flashcards", {
-        error: "Add a title and at least one complete flashcard.",
+        error: titleValidation.ok ? "Add at least one complete flashcard." : titleValidation.error,
       }),
     );
   }
@@ -199,7 +237,7 @@ export async function createManualFlashcardSet(formData: FormData) {
     .from("flashcard_sets")
     .insert({
       user_id: user.id,
-      title,
+      title: titleValidation.value,
       source_mode: "manual",
       query_text: null,
       document_id: null,
@@ -245,17 +283,21 @@ export async function createManualFlashcardSet(formData: FormData) {
 }
 
 export async function updateManualFlashcardSet(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildStudyToolRedirect("flashcards", { message: "Manual flashcard editing is disabled in demo mode." }));
+  }
+
   const { supabase, user } = await requireStudyToolUser();
   const setId = String(formData.get("setId") ?? "").trim();
-  const title = String(formData.get("title") ?? "").trim();
+  const titleValidation = validateStudySetTitle(String(formData.get("title") ?? ""), "flashcards");
   const cards = parseManualCards(formData);
 
   if (!setId) {
     redirect(buildStudyToolRedirect("flashcards", { error: "A flashcard set id is required." }));
   }
 
-  if (!title || cards.length === 0) {
-    redirect(`/flashcards/${setId}?${new URLSearchParams({ error: "Add a title and at least one complete flashcard." }).toString()}`);
+  if (!titleValidation.ok || cards.length === 0) {
+    redirect(`/flashcards/${setId}?${new URLSearchParams({ error: titleValidation.ok ? "Add at least one complete flashcard." : titleValidation.error }).toString()}`);
   }
 
   const { data: set, error: setError } = await supabase
@@ -278,7 +320,7 @@ export async function updateManualFlashcardSet(formData: FormData) {
   const { error: updateSetError } = await supabase
     .from("flashcard_sets")
     .update({
-      title,
+      title: titleValidation.value,
       updated_at: new Date().toISOString(),
     })
     .eq("id", setId)
@@ -311,6 +353,10 @@ export async function updateManualFlashcardSet(formData: FormData) {
 }
 
 export async function regenerateFlashcardSet(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildStudyToolRedirect("flashcards", { message: "Flashcard regeneration is disabled in demo mode." }));
+  }
+
   const { supabase, user } = await requireStudyToolUser();
   const setId = String(formData.get("setId") ?? "").trim();
 
@@ -357,6 +403,10 @@ export async function regenerateFlashcardSet(formData: FormData) {
 }
 
 export async function deleteFlashcardSet(formData: FormData) {
+  if (await isDemoSession()) {
+    redirect(buildStudyToolRedirect("flashcards", { message: "Flashcard deletion is disabled in demo mode." }));
+  }
+
   const { supabase, user } = await requireStudyToolUser();
   const setId = String(formData.get("setId") ?? "").trim();
 

@@ -12,6 +12,8 @@ StudyStack helps students study from the materials they already use in class. Up
 
 The product is designed around reviewability. Answers and study tools stay connected to the uploaded document sections they came from, so students can verify ideas, revisit source material, and keep their study sessions organized.
 
+For local demos or portfolio walkthroughs, StudyStack also supports an optional preview workspace with seeded study data so the product can be explored without relying on a real account or live database session.
+
 ## Features
 
 - Secure sign up, sign in, and sign out with protected app routes
@@ -20,6 +22,7 @@ The product is designed around reviewability. Answers and study tools stay conne
 - Server-side PDF text extraction with structured pages, sections, formulas, examples, and local study spans
 - Search across uploaded study materials
 - Chat-first study flow with attachment-style PDF uploads
+- Optional preview workspace for product demos and portfolio walkthroughs
 - Grounded study chat with persistent threads, saved Q&A history, and source citations
 - Source links that jump back to the relevant document section
 - Flashcard generation from uploaded materials with filtering, ratings, shuffle, and end-of-session review
@@ -28,6 +31,7 @@ The product is designed around reviewability. Answers and study tools stay conne
 - Manual multiple-choice quiz creation and editing
 - Interactive study planner with calendar-based reminders
 - Math rendering for formulas and technical notation
+- Shared server-side validation, cleaner upload finalization, and per-user throttling on expensive actions
 - Student-facing marketing pages for features, workflow, and onboarding
 - Practical security hardening for private files, user-scoped data, uploads, and browser headers
 
@@ -126,6 +130,7 @@ Then provide values for a Supabase project and OpenAI key.
 NEXT_PUBLIC_SUPABASE_URL=https://<supabase-project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<supabase-publishable-or-anon-key>
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
+DEMO_MODE=false
 SUPABASE_DOCUMENTS_BUCKET=documents
 OPENAI_API_KEY=<openai-api-key>
 OPENAI_MODEL=gpt-5-mini
@@ -139,6 +144,26 @@ Important notes:
 - `OPENAI_API_KEY` must stay server-only. Do not prefix it with `NEXT_PUBLIC_`.
 - `SUPABASE_DOCUMENTS_BUCKET` should match the private bucket configured in Supabase.
 - Set `NEXT_PUBLIC_SITE_URL` to the deployed app URL in production.
+- Set `DEMO_MODE=true` to enable the preview workspace entry points and seeded demo session.
+
+### Optional: Run in Demo Mode
+
+StudyStack includes a lightweight preview workspace for product walkthroughs.
+
+1. Set `DEMO_MODE=true` in `.env.local`.
+2. Start the app with `npm run dev`.
+3. Open [http://localhost:3000](http://localhost:3000) and choose `Try demo`, or visit [http://localhost:3000/demo](http://localhost:3000/demo) directly.
+
+Demo mode includes seeded screens for:
+
+- dashboard resume and planner views
+- grounded chat threads with saved sources
+- a document library with realistic study materials
+- flashcard study sessions
+- quiz sessions
+- planner entries and reminders
+
+In preview mode, the real authentication flow remains available, while the seeded workspace stays isolated from real user accounts and keeps write actions safely limited.
 
 ### 4. Run Supabase Setup SQL
 
@@ -183,6 +208,7 @@ npm run start
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Public Supabase project URL. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yes | Low-privilege Supabase browser key. |
 | `NEXT_PUBLIC_SITE_URL` | Yes | App URL used for auth redirects. Use `http://localhost:3000` locally. |
+| `DEMO_MODE` | No | Enables the public preview workspace, seeded demo data, and demo entry points such as `/demo`. |
 | `SUPABASE_DOCUMENTS_BUCKET` | Yes | Private Supabase Storage bucket for uploaded PDFs. |
 | `OPENAI_API_KEY` | Yes | Server-only OpenAI API key. |
 | `OPENAI_MODEL` | Yes | Model used for answers, flashcards, and quizzes. |
@@ -211,6 +237,7 @@ Security-related implementation details include:
 - User-owned tables are scoped with RLS policies.
 - Uploaded PDFs are stored in a private bucket under per-user paths.
 - PDF uploads are limited to PDF files and capped at 50 MB.
+- Expensive actions such as upload finalization, chat answers, planner writes, and study-tool generation are throttled server-side.
 - The OpenAI API key is only used server-side.
 - Browser security headers are configured in `next.config.ts`.
 - Retrieved document text is treated as untrusted input in AI prompts.

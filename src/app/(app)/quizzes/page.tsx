@@ -3,12 +3,15 @@ import {
   deleteQuizSet,
   generateQuizSet,
 } from "@/app/(app)/quizzes/actions";
+import { PageHeader } from "@/components/app/page-header";
 import { ManualQuizForm } from "@/components/quizzes/manual-quiz-form";
 import { ActionSubmitButton, ConfirmActionSubmitButton } from "@/components/study-tools/action-submit-button";
 import { Button } from "@/components/ui/button";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { getDemoWorkspaceData } from "@/lib/demo/data";
+import { isDemoSession } from "@/lib/demo/mode";
 import { formatDocumentDate } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,21 +33,47 @@ function getSetModeDescription(sourceMode: string) {
 }
 
 export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
-  const [{ error: pageError, message }, supabase] = await Promise.all([
-    searchParams,
-    createClient(),
-  ]);
+  const [{ error: pageError, message }] = await Promise.all([searchParams]);
+  const demoMode = await isDemoSession();
 
-  const [{ data: documents }, { data: sets }] = await Promise.all([
-    supabase
-      .from("documents")
-      .select("id, title, document_contents(chunk_count, extraction_status)")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("quiz_sets")
-      .select("id, title, source_mode, created_at, updated_at, quiz_questions(id)")
-      .order("updated_at", { ascending: false }),
-  ]);
+  const [documents, sets] = demoMode
+    ? (() => {
+        const demoData = getDemoWorkspaceData();
+
+        return [
+          demoData.documents.map((document) => ({
+            id: document.id,
+            title: document.title,
+            document_contents: {
+              chunk_count: document.chunk_count,
+              extraction_status: document.extraction_status,
+            },
+          })),
+          demoData.quizSets.map((set) => ({
+            id: set.id,
+            title: set.title,
+            source_mode: set.source_mode,
+            created_at: set.created_at,
+            updated_at: set.updated_at,
+            quiz_questions: set.questions.map((question) => ({ id: question.id })),
+          })),
+        ] as const;
+      })()
+    : await (async () => {
+        const supabase = await createClient();
+        const [{ data: documents }, { data: sets }] = await Promise.all([
+          supabase
+            .from("documents")
+            .select("id, title, document_contents(chunk_count, extraction_status)")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("quiz_sets")
+            .select("id, title, source_mode, created_at, updated_at, quiz_questions(id)")
+            .order("updated_at", { ascending: false }),
+        ]);
+
+        return [documents ?? [], sets ?? []] as const;
+      })();
 
   const normalizedDocuments = (documents ?? []).map((document) => ({
     ...document,
@@ -55,32 +84,29 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
 
   return (
     <div className="space-y-6">
-      <section className="surface-enter rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.22)] sm:p-7">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
-              Quizzes
-            </span>
-            <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
-              Practice with source-backed quizzes.
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-              Build multiple-choice practice from your study materials and reopen saved quiz sessions anytime.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
+      <PageHeader
+        badge="Quizzes"
+        title="Practice with source-backed quizzes."
+        description="Build multiple-choice practice from your study materials and reopen saved quiz sessions when you want a focused review."
+        actions={
+          <>
             <Button href="/flashcards" variant="secondary">
               Open flashcards
             </Button>
             <Button href="/documents">Browse documents</Button>
-          </div>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       {pageError ? <AlertBanner tone="error">{pageError}</AlertBanner> : null}
       {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
+      {demoMode ? (
+        <AlertBanner tone="info">
+          Demo mode includes generated and manual quizzes so the test flow, results, and source links can be shown without live generation.
+        </AlertBanner>
+      ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[0.82fr_1.18fr]">
+      <div className="grid gap-5 xl:grid-cols-[0.84fr_1.16fr]">
         <div className="space-y-5">
         <Card className="surface-enter space-y-5">
           <div>
@@ -90,6 +116,11 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
             </CardDescription>
           </div>
 
+          {demoMode ? (
+            <AlertBanner tone="info">
+              Quiz generation is disabled in demo mode. Open one of the seeded quiz sets to show the full practice flow.
+            </AlertBanner>
+          ) : (
           <form action={generateQuizSet} className="space-y-4">
             <label className="block space-y-2">
               <span className="text-sm font-medium text-slate-200">Quiz title</span>
@@ -151,6 +182,7 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
               <ActionSubmitButton label="Generate quiz" pendingLabel="Generating..." />
             </div>
           </form>
+          )}
         </Card>
 
         <Card className="surface-enter space-y-5">
@@ -160,7 +192,13 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
               Write custom multiple-choice questions and save them as a reusable practice quiz.
             </CardDescription>
           </div>
-          <ManualQuizForm action={createManualQuizSet} />
+          {demoMode ? (
+            <AlertBanner tone="info">
+              Manual quiz creation is hidden in demo mode so the showcase stays self-contained and read-only.
+            </AlertBanner>
+          ) : (
+            <ManualQuizForm action={createManualQuizSet} />
+          )}
         </Card>
         </div>
 
@@ -216,21 +254,23 @@ export default async function QuizzesPage({ searchParams }: QuizzesPageProps) {
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
                     <Button href={`/quizzes/${quizSet.id}`}>Start</Button>
-                    {quizSet.source_mode === "manual" ? (
+                    {!demoMode && quizSet.source_mode === "manual" ? (
                       <Button href={`/quizzes/${quizSet.id}`} variant="secondary">
                         Edit
                       </Button>
                     ) : null}
-                    <form action={deleteQuizSet}>
-                      <input type="hidden" name="setId" value={quizSet.id} />
-                      <ConfirmActionSubmitButton
-                        label="Delete"
-                        pendingLabel="Deleting..."
-                        confirmMessage={`Delete "${quizSet.title}"? This cannot be undone.`}
-                        variant="ghost"
-                        className="border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
-                      />
-                    </form>
+                    {!demoMode ? (
+                      <form action={deleteQuizSet}>
+                        <input type="hidden" name="setId" value={quizSet.id} />
+                        <ConfirmActionSubmitButton
+                          label="Delete"
+                          pendingLabel="Deleting..."
+                          confirmMessage={`Delete "${quizSet.title}"? This cannot be undone.`}
+                          variant="ghost"
+                          className="border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
+                        />
+                      </form>
+                    ) : null}
                   </div>
                 </div>
               ))}

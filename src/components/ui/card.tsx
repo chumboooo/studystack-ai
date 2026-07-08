@@ -10,7 +10,7 @@ export function Card({ children, className }: CardProps) {
   return (
     <div
       className={cn(
-        "rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.025))] p-6 shadow-[0_12px_32px_rgba(2,6,23,0.28)]",
+        "rounded-[1.75rem] border border-white/8 bg-white/[0.035] p-6 shadow-[0_10px_28px_rgba(2,6,23,0.16)]",
         className,
       )}
     >
@@ -24,5 +24,5 @@ export function CardTitle({ children, className }: CardProps) {
 }
 
 export function CardDescription({ children, className }: CardProps) {
-  return <p className={cn("text-sm leading-6 text-slate-300", className)}>{children}</p>;
+  return <p className={cn("text-sm leading-6 text-slate-400", className)}>{children}</p>;
 }

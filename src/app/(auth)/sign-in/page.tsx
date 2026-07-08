@@ -4,7 +4,9 @@ import { signIn } from "@/app/(auth)/actions";
 import { AuthMessage } from "@/components/auth/auth-message";
 import { AuthSubmitButton } from "@/components/auth/auth-submit-button";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { isDemoModeEnabled, isDemoSession } from "@/lib/demo/mode";
 import { createClient } from "@/lib/supabase/server";
 
 type SignInPageProps = {
@@ -15,10 +17,21 @@ type SignInPageProps = {
 };
 
 export default async function SignInPage({ searchParams }: SignInPageProps) {
-  const [{ error, message }, supabase] = await Promise.all([searchParams, createClient()]);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const demoAvailable = isDemoModeEnabled();
+  const [{ error, message }, demoSessionActive] = await Promise.all([searchParams, isDemoSession()]);
+
+  if (demoSessionActive) {
+    redirect("/dashboard");
+  }
+
+  let user = null;
+
+  try {
+    const supabase = await createClient();
+    user = (await supabase.auth.getUser()).data.user;
+  } catch {
+    user = null;
+  }
 
   if (user) {
     redirect("/dashboard");
@@ -65,6 +78,18 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
 
           <AuthSubmitButton idleLabel="Sign in" pendingLabel="Signing in..." />
         </form>
+
+        {demoAvailable ? (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <p className="text-sm font-medium text-white">Want to explore first?</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Open a seeded preview workspace to see chat, documents, flashcards, quizzes, and the planner without creating an account.
+            </p>
+            <Button href="/demo" variant="secondary" className="mt-4 w-full justify-center">
+              Try demo
+            </Button>
+          </div>
+        ) : null}
       </Card>
     </AuthShell>
   );

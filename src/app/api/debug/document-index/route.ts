@@ -64,11 +64,9 @@ export async function GET(request: Request) {
   if (process.env.STUDYSTACK_RETRIEVAL_DEBUG !== "true") {
     return NextResponse.json(
       {
-        state: "debug_disabled",
-        error: "Document index inspection is disabled.",
-        enable: "Set STUDYSTACK_RETRIEVAL_DEBUG=true on the server to use this endpoint.",
+        error: "Not found.",
       },
-      { status: 403 },
+      { status: 404 },
     );
   }
 

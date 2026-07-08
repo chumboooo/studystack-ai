@@ -8,6 +8,8 @@ import { AlertBanner } from "@/components/ui/alert-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { getDemoQuizSet } from "@/lib/demo/data";
+import { isDemoSession } from "@/lib/demo/mode";
 import { formatDocumentDate } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
@@ -22,29 +24,44 @@ type QuizStudyPageProps = {
 };
 
 export default async function QuizStudyPage({ params, searchParams }: QuizStudyPageProps) {
-  const [{ id }, { error, message }, supabase] = await Promise.all([
+  const [{ id }, { error, message }] = await Promise.all([
     params,
     searchParams,
-    createClient(),
   ]);
+  const demoMode = await isDemoSession();
 
-  const { data: set } = await supabase
-    .from("quiz_sets")
-    .select("id, title, source_mode, created_at, updated_at")
-    .eq("id", id)
-    .maybeSingle();
+  const demoSet = demoMode ? getDemoQuizSet(id) : null;
+  const set = demoSet
+    ? demoSet
+    : (
+        await (async () => {
+          const supabase = await createClient();
+          return supabase
+            .from("quiz_sets")
+            .select("id, title, source_mode, created_at, updated_at")
+            .eq("id", id)
+            .maybeSingle();
+        })()
+      ).data;
 
   if (!set) {
     notFound();
   }
 
-  const { data: questions } = await supabase
-    .from("quiz_questions")
-    .select(
-      "id, question, choices, correct_choice_index, explanation, source_document_id, source_document_title, source_chunk_index, created_at",
-    )
-    .eq("set_id", set.id)
-    .order("created_at", { ascending: true });
+  const questions = demoMode
+    ? demoSet?.questions ?? null
+    : (
+        await (async () => {
+          const supabase = await createClient();
+          return supabase
+            .from("quiz_questions")
+            .select(
+              "id, question, choices, correct_choice_index, explanation, source_document_id, source_document_title, source_chunk_index, created_at",
+            )
+            .eq("set_id", set.id)
+            .order("created_at", { ascending: true });
+        })()
+      ).data;
 
   const normalizedQuestions = (questions ?? []).map((question) => ({
     ...question,
@@ -71,6 +88,11 @@ export default async function QuizStudyPage({ params, searchParams }: QuizStudyP
 
       {error ? <AlertBanner tone="error">{error}</AlertBanner> : null}
       {message ? <AlertBanner tone="success">{message}</AlertBanner> : null}
+      {demoMode ? (
+        <AlertBanner tone="info">
+          Demo mode keeps this quiz session fully interactive while edit, regenerate, and delete actions stay off.
+        </AlertBanner>
+      ) : null}
 
       {normalizedQuestions.length === 0 ? (
         <EmptyState
@@ -91,23 +113,25 @@ export default async function QuizStudyPage({ params, searchParams }: QuizStudyP
       ) : (
         <>
           <div className="flex flex-wrap justify-end gap-3">
-            {set.source_mode === "manual" ? null : (
+            {!demoMode && set.source_mode !== "manual" ? (
               <form action={regenerateQuizSet}>
                 <input type="hidden" name="setId" value={set.id} />
                 <ActionSubmitButton label="Regenerate quiz" pendingLabel="Regenerating..." />
               </form>
-            )}
-            <form action={deleteQuizSet}>
-              <input type="hidden" name="setId" value={set.id} />
-              <ActionSubmitButton
-                label="Delete quiz"
-                pendingLabel="Deleting..."
-                variant="ghost"
-                className="border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
-              />
-            </form>
+            ) : null}
+            {!demoMode ? (
+              <form action={deleteQuizSet}>
+                <input type="hidden" name="setId" value={set.id} />
+                <ActionSubmitButton
+                  label="Delete quiz"
+                  pendingLabel="Deleting..."
+                  variant="ghost"
+                  className="border border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/20"
+                />
+              </form>
+            ) : null}
           </div>
-          {set.source_mode === "manual" ? (
+          {!demoMode && set.source_mode === "manual" ? (
             <Card className="space-y-5">
               <div>
                 <CardTitle>Edit manual quiz</CardTitle>

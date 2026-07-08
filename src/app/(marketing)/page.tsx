@@ -2,8 +2,11 @@ import { Navbar } from "@/components/marketing/navbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { isDemoModeEnabled } from "@/lib/demo/mode";
 
 export default function LandingPage() {
+  const demoAvailable = isDemoModeEnabled();
+
   return (
     <main className="min-h-screen">
       <Navbar />
@@ -27,9 +30,20 @@ export default function LandingPage() {
               <Button href="/sign-up" size="lg">
                 Start studying
               </Button>
-              <Button href="/features" variant="secondary" size="lg">
-                Explore features
-              </Button>
+              {demoAvailable ? (
+                <Button href="/demo" variant="secondary" size="lg">
+                  Try demo
+                </Button>
+              ) : (
+                <Button href="/features" variant="secondary" size="lg">
+                  Explore features
+                </Button>
+              )}
+              {demoAvailable ? (
+                <Button href="/features" variant="ghost" size="lg">
+                  Explore features
+                </Button>
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-6 text-sm text-slate-400">
               <span>Organize class materials</span>

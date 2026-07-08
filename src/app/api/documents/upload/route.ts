@@ -13,7 +13,10 @@ import {
   sanitizeUploadFileName,
 } from "@/lib/documents/upload-validation";
 import { isAllowedOrigin } from "@/lib/security/origin";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { logServerEvent } from "@/lib/server/logger";
 import { createClient } from "@/lib/supabase/server";
+import { normalizeSingleLineText } from "@/lib/validation";
 
 export async function POST(request: Request) {
   if (!isAllowedOrigin(request)) {
@@ -43,11 +46,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Upload details could not be read." }, { status: 400 });
   }
 
-  const title = String(payload.title ?? "").trim().slice(0, 160);
+  const title = normalizeSingleLineText(String(payload.title ?? ""), 160);
   const fileName = String(payload.fileName ?? "").trim();
   const filePath = String(payload.filePath ?? "").trim();
   const fileSize = Number(payload.fileSize ?? 0);
   const mimeType = String(payload.mimeType ?? "").trim() || PDF_MIME_TYPE;
+
+  const uploadRateLimit = checkRateLimit({
+    action: "document-upload-finalize",
+    identifier: user.id,
+    limit: 6,
+    windowMs: 10 * 60 * 1000,
+  });
+
+  if (!uploadRateLimit.ok) {
+    return NextResponse.json(
+      {
+        error: `Too many document uploads were started in a short time. Please wait about ${uploadRateLimit.retryAfterSeconds} seconds and try again.`,
+      },
+      { status: 429 },
+    );
+  }
 
   if (!fileName || !filePath || !Number.isFinite(fileSize) || fileSize <= 0) {
     return NextResponse.json({ error: "Upload details are incomplete." }, { status: 400 });
@@ -81,6 +100,13 @@ export async function POST(request: Request) {
     .download(filePath);
 
   if (downloadError || !downloadedFile) {
+    logServerEvent("warn", "documents.upload.download_failed", {
+      userId: user.id,
+      filePath,
+      bucket,
+      reason: downloadError?.message ?? "missing_file",
+    });
+
     return NextResponse.json(
       {
         error: "The uploaded PDF could not be opened for study prep.",
@@ -124,6 +150,11 @@ export async function POST(request: Request) {
 
   if (insertError || !document) {
     await supabase.storage.from(bucket).remove([filePath]);
+    logServerEvent("error", "documents.upload.insert_failed", {
+      userId: user.id,
+      filePath,
+      reason: insertError?.message ?? "missing_document",
+    });
 
     return NextResponse.json(
       {
@@ -146,6 +177,13 @@ export async function POST(request: Request) {
   revalidatePath("/chat");
 
   if (!result.ok) {
+    logServerEvent("warn", "documents.upload.processing_failed", {
+      userId: user.id,
+      documentId: document.id,
+      filePath,
+      message: result.message,
+    });
+
     return NextResponse.json(
       {
         ok: false,
